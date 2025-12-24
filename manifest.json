@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Amazon Review Insights Pro",
+  "version": "1.0.0",
+  "description": "Professional tool to analyze Amazon product features and customer reviews with one click.",
+  "author": "Aihang AI",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": [
+    "https://www.amazon.de/*",
+    "https://www.amazon.fr/*",
+    "https://www.amazon.it/*",
+    "https://www.amazon.es/*",
+    "https://www.amazon.co.uk/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Analyze this product"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}
