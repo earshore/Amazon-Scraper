@@ -38,18 +38,33 @@ document.getElementById('scrapeBtn').addEventListener('click', async () => {
 function renderPreview(prod) {
     const preview = document.getElementById('mdPreview');
     let bulletsHtml = prod.feature_bullets.map(b => `<li>${b}</li>`).join('');
-    
+
     // 渲染评论，使用 "|" 分隔星级和标题
     let reviewsHtml = prod.customer_reviews.map(r => `
-        <div class="review-card" style="border-bottom: 1px solid #eee; padding: 15px 0;">
-            <div style="display: flex; align-items: center; gap: 4px; font-size: 14px;">
-                <span style="color: #DE7921; font-weight: 700;">★ ${r.star_rating}</span>
-                <span style="color: #ccc; margin: 0 4px;">|</span>
-                <span style="font-weight: 700; color: #0F1111;">${r.headline}</span>
+        <div class="review-card" style="border-bottom: 1px solid #e7e7e7; padding: 20px 0; font-family: 'Arial', sans-serif;">
+            <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                <div style="display: flex; color: #DE7921; font-size: 15px; margin-right: 8px;">
+                    ${Array.from({ length: 5 }, (_, i) => 
+                        `<span style="margin-right: -1px;">${i < r.star_rating ? '★' : '<span style="color:#ccc">☆</span>'}</span>`
+                    ).join('')}
+                </div>
+                <span style="font-weight: 700; color: #0F1111; font-size: 14px; line-height: 1.2;">
+                    ${r.headline}
+                </span>
             </div>
-            <div style="color: #565959; font-size: 13px; margin-top: 4px;">${r.review_date}</div>
-            ${r.is_verified ? '<div style="color: #C45500; font-weight: 700; font-size: 12px; margin-top: 2px;">Verified Purchase</div>' : ''}
-            <div style="color: #0F1111; font-size: 13px; margin-top: 8px; line-height: 1.5;">${r.body}</div>
+
+            <div style="color: #565959; font-size: 13px; margin-bottom: 4px;">
+                Reviewed in ${finalData.metadata.marketplace} on ${r.review_date}
+            </div>
+
+            ${r.is_verified ? `
+            <div style="color: #C45500; font-weight: 700; font-size: 12px; margin-top: 8px;">
+                Verified Purchase
+            </div>` : ''}
+
+            <div style="color: #0F1111; font-size: 14px; line-height: 1.45; word-wrap: break-word;">
+                ${r.body}
+            </div>
         </div>
     `).join('');
 
