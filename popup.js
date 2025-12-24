@@ -216,7 +216,9 @@ const customer_reviews = Array.from(reviewElements)
         
         // 提取国家逻辑保持不变
         const dateAndLocationText = el.querySelector('[data-hook="review-date"], .review-date')?.innerText || "";
-        const locationMatch = dateAndLocationText.match(/(?:in|aus|en|il)\s+(.+?)\s+(?:on|am|le|il|el|au)\s+\d/i);
+        const regex = /(?:in|aus|en|il|em|nel|su|von|från|z|u)\s+(.+?)\s+(?:on|am|le|il|el|au|al|del|am|den|dnia|på|den)\s+\d/i;
+        const locationMatch = dateAndLocationText.match(regex);
+        //const locationMatch = dateAndLocationText.match(/(?:in|aus|en|il)\s+(.+?)\s+(?:on|am|le|il|el|au)\s+\d/i);
         const review_country = locationMatch ? locationMatch[1].trim() : "Global";
 
         return {
