@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Amazon Multi-Page Scraper",
+  "name": "Amazon Scraper",
   "version": "1.0.0",
-  "description": "Professional multi-page review scraper for Amazon.",
+  "description": "Professional review scraper for Amazon.",
   "author": "Aihang AI",
   "icons": {
     "16": "icons/icon16.png",
@@ -19,7 +19,8 @@
     "https://www.amazon.se/*",
     "https://www.amazon.pl/*",
     "https://www.amazon.com.be/*",   
-    "https://www.amazon.co.uk/*"
+    "https://www.amazon.co.uk/*",
+    "https://www.amazon.com/*"
   ],
   "action": {
     "default_popup": "popup.html",
