@@ -45,6 +45,10 @@ document.getElementById('scrapeBtn').addEventListener('click', async () => {
             'amazon.fr': 'fr',
             'amazon.it': 'it',
             'amazon.es': 'es',
+            'amazon.nl': 'nl',
+            'amazon.pl': 'pl',
+            'amazon.se': 'sv',
+            'amazon.ie': 'en',
             'amazon.co.uk': 'en',
             'amazon.com': 'en'
         };
@@ -191,7 +195,7 @@ document.getElementById('downloadBtn').addEventListener('click', () => {
     try {
         const product = finalData.products[0];
         // 2. 容错处理：如果 ASIN 缺失，使用时间戳命名
-        const fileName = `Amazon_Scrape_${product.asin || new Date().getTime()}.json`;
+        const fileName = `Amz_Scrape_${product.asin || new Date().getTime()}.json`;
         
         const blob = new Blob([JSON.stringify(finalData, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -221,262 +225,268 @@ function scrapeAmazonLogic() {
     try {
         // --- 1. 配置：多重备选选择器 (基于你提供的增强版) ---
         const config = {
-            productTitle: ['#productTitle', '#title', 'h1[data-automation-id="title"]', 'span#productTitle', '#titleSection #title'],
-            //: ['.a-unordered-list.a-vertical li span', '#feature-bullets ul li span.a-list-item', '#feature-bullets li span', '#featurebullets_feature_div li span'],
+            productTitle: [
+                '#productTitle', 
+                '#title', 
+                'h1[data-automation-id="title"]', 
+                'span#productTitle', 
+                '#titleSection #title'
+            ],
             // 修改 config 里的选择器，优先抓取 li 或带有 a-list-item 的容器
             bulletPoints: [
                 '#feature-bullets ul li .a-list-item', // 经典版最准
                 '#productFactsDesktop_feature_div ul li', // 现代版最准
-                '.a-unordered-list.a-vertical li' // 通用备选，不再直接指点到 span
-
-                
+                '.a-unordered-list.a-vertical li' // 通用备选，不再直接指点到 span                
             ],
-            reviewContainers: ['[data-hook="review"]', '.review', '.a-section.review', '#cm_cr-review_list .review', '.cr-widget-Reviews .review'],
-            reviewBody: ['[data-hook="review-body"] span:not(.cr-original-review-content)', '[data-hook="review-body"]', '.review-text-content span', '.review-text span', '.reviewText', 'span[data-hook="review-body"]', '.a-size-base.review-text'],
+            reviewContainers: [
+                '[data-hook="review"]', 
+                '.review', 
+                '.a-section.review', 
+                '#cm_cr-review_list .review', 
+                '.cr-widget-Reviews .review'
+            ],
+            reviewBody: [
+                '[data-hook="review-body"] span:not(.cr-original-review-content)', 
+                '[data-hook="review-body"]', 
+                '.review-text-content span', 
+                '.review-text span', 
+                '.reviewText', 
+                'span[data-hook="review-body"]', 
+                '.a-size-base.review-text'
+            ],
             // 强化标题选择器：优先抓取具体文本节点
             reviewTitle: [
                 '[data-hook="review-title"] span:not(.a-letter-space)', 
                 'a[data-hook="review-title"] span:not(.a-letter-space)',
                 '[data-hook="review-title"]',
                 '.review-title-content span'
-],
-            reviewRating: ['[data-hook="review-star-rating"]', '[data-hook="cmps-review-star-rating"]', '.review-rating', 'i.a-icon-star']
-            };
+            ],
+            reviewRating: [
+                '[data-hook="review-star-rating"]', 
+                '[data-hook="cmps-review-star-rating"]', 
+                '.review-rating', 'i.a-icon-star'
+            ]
+        };
 
-            const BLACKLIST_REGEX = [
-                /von 5 Sternen|out of 5 stars|étoiles sur 5/i,
-                /Verifizierter Kauf|Verified Purchase/i,
-                /Sponsored|Gesponsert/i
-                // 注意：删除了可能会误杀标题的 "Nützlich", "Löschen" 等词汇
-            ];
+        // --- 2. 黑名单正则 ---
+        const BLACKLIST_REGEX = [
+            /von 5 Sternen|out of 5 stars|étoiles sur 5/i,
+            /Verifizierter Kauf|Verified Purchase/i,
+            /Sponsored|Gesponsert/i
+            // 注意：删除了可能会误杀标题的 "Nützlich", "Löschen" 等词汇
+        ];
 
-            // --- 3. 跨语言日期解析引擎 (欧洲全站点支持) ---
-            const parseEuropeanDate = (text) => {
-                if (!text) return "";
-                // 清除介词 (如 "on", "am", "le", "il", "el", "op", "den", "w dniu")
-                const cleanStr = text.replace(/^.*?(on|am|le|il|el|op|den|dnia|w dniu)\s+/i, '').trim();
-                
-                const months = {
-                    jan: '01', feb: '02', mar: '03', apr: '04', mai: '05', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', okt: '10', oct: '10', nov: '11', dez: '12', dec: '12',
-                    januar: '01', februar: '02', märz: '03', april: '04', juni: '06', juli: '07', august: '08', september: '09', oktober: '10', november: '11', dezember: '12',
-                    janvier: '01', février: '02', mars: '03', mai: '05', juin: '06', juillet: '07', août: '08', octobre: '10', novembre: '11', décembre: '12',
-                    gennaio: '01', febbraio: '02', marzo: '03', maggio: '05', giugno: '06', luglio: '07', agosto: '08', settembre: '09', ottobre: '10', novembre: '11', dicembre: '12',
-                    enero: '01', febrero: '02', marzo: '03', mayo: '05', junio: '06', julio: '07', agosto: '08', septiembre: '09', octubre: '10', noviembre: '11', diciembre: '12',
-                    stycznia: '01', lutego: '02', marca: '03', kwietnia: '04', maja: '05', czerwca: '06', lipca: '07', sierpnia: '08', września: '09', października: '10', listopada: '11', grudnia: '12'
-                };
-
-                let foundMonth = "01";
-                for (const [name, num] of Object.entries(months)) {
-                    if (cleanStr.toLowerCase().includes(name)) {
-                        foundMonth = num;
-                        break;
-                    }
-                }
-
-                const yearMatch = cleanStr.match(/\d{4}/);
-                const dayMatch = cleanStr.match(/\b\d{1,2}\b/);
-                return (yearMatch && dayMatch) ? `${yearMatch[0]}-${foundMonth}-${dayMatch[0].padStart(2, '0')}` : cleanStr;
-            };
-
-            // --- 4. 抓取逻辑实现 ---
-            const getFirstValidText = (selectors, parent = document, useBlacklist = true) => {
-                for (const sel of selectors) {
-                    const el = parent.querySelector(sel);
-                    if (el && el.innerText.trim()) {
-                        const txt = el.innerText.trim();
-                        if (useBlacklist && BLACKLIST_REGEX.some(r => r.test(txt))) continue;
-                        return txt;
-                    }
-                }
-                return "";
-            };
-
-            // 4.1 基本信息
-            const productTitle = getFirstValidText(config.productTitle);
-            const asin = document.querySelector('#ASIN')?.value || window.location.href.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/)?.[1] || "UNKNOWN";
-
-            // 4.2 五点描述 (带黑名单精滤)
-            let feature_bullets = [];
-            for (const sel of config.bulletPoints) {
-                const nodes = document.querySelectorAll(sel);
-                if (nodes.length > 0) {
-                    const cleaned = Array.from(nodes)
-                    
-                        .filter(n => {
-                        // 1. 核心改进：必须位于 #feature-bullets 容器内
-                        const isInMainFeatureArea = n.closest('#feature-bullets') || n.closest('#featurebullets_feature_div') || n.closest('#productFactsDesktop_feature_div');
-
-                        // 1. 屏蔽详情参数区域
-                        const isDetails = n.closest('#prodDetails') || n.closest('#productDetails_feature_div');
-                        // 2. 屏蔽购物车/侧边栏区域
-                        const isSideBar = n.closest('#rightCol') || n.closest('#nav-flyout-ewc');
-                        // 3. 屏蔽客户评分分布区域
-                        const isCusterReview = n.closest('#a-fixed-left-grid-col a-col-left');
-                        // 4. 仅保留主内容区
-
-                        return isInMainFeatureArea && !isDetails && !isSideBar && !isCusterReview;
-                    })
-
-                        // .map(n => n.innerText.trim())
-                        // .filter(t => t.length > 8 && !BLACKLIST_REGEX.some(r => r.test(t)));
-
-                        .map(n => {
-                            // 关键改动：获取该节点下的所有文本，防止 span 嵌套导致的文本断裂
-                            return n.textContent.replace(/\s+/g, ' ').trim(); 
-                        })
-                        .filter(t => t.length > 5); // 稍微放宽长度限制，现代版有些描述可能简短但重要
-
-                    if (cleaned.length > 0) {
-                        feature_bullets = [...new Set(cleaned)].slice(0, 10);
-                        break;
-                    }
-                }
-            }
-
-            // 4.3 评论 (跨站点位置解析)
-            let reviewNodes = [];
-            for (const sel of config.reviewContainers) {
-                const found = document.querySelectorAll(sel);
-                if (found.length > 0) { reviewNodes = Array.from(found); break; }
-            }
-            /**
-             * 增强版星级提取器：解决国际评论 rating 为 0 的问题
-             */
-            const extractStars = (parent) => {
-                // 1. 定义多重备选选择器（包含国际评论特有的 selector）
-                const starSelectors = [
-                    '[data-hook="review-star-rating"]',
-                    '[data-hook="cmps-review-star-rating"]',
-                    '.review-rating',
-                    'i.a-icon-star',
-                    '.a-icon-alt' // 许多国际评论的星级文本隐藏在这里
-                ];
-
-                let rawValue = "";
-
-                for (const sel of starSelectors) {
-                    const el = parent.querySelector(sel);
-                    if (el) {
-                        // 依次尝试获取 aria-label, title 或 纯文本
-                        rawValue = el.getAttribute('aria-label') || el.getAttribute('title') || el.innerText || "";
-                        if (rawValue) break;
-                    }
-                }
-
-                if (!rawValue) return 0;
-
-                // 2. 核心修复：处理欧洲数字格式 (例如 "4,8" 或 "4.8")
-                // 正则匹配：找到数字部分，支持逗号或点号
-                const match = rawValue.match(/(\d([.,]\d)?)/);
-                if (match) {
-                    // 将逗号统一替换为点号，以便 parseFloat 正确转换
-                    const numStr = match[0].replace(',', '.');
-                    return parseFloat(numStr);
-                }
-
-                return 0;
-            };
-
-            const customer_reviews = reviewNodes.map(el => {
-
-            // 1. 获取原始标题 (关闭黑名单，确保拿到原始字符串)
-            // 1. 获取标题节点
-            const titleEl = el.querySelector('[data-hook="review-title"]') || 
-                el.querySelector('.review-title-content') || 
-                el.querySelector('a[data-hook="review-title"]');
-                // 2. 强力清洗逻辑
-            let cleanHeadline = "";
-            if (titleEl) {
-                // 【关键修复】：不直接使用 innerText，而是克隆节点并移除掉其中的星级 span
-                // 这样可以彻底隔离“5,0 von 5 Sternen”这些干扰文字
-                const tempTitle = titleEl.cloneNode(true);
-                // 移除星级干扰和可能的翻译占位符
-                const noise = tempTitle.querySelectorAll('.a-icon-alt, .cr-translated-review-content, i');
-                noise.forEach(n => n.remove());
-                cleanHeadline = tempTitle.textContent.replace(/\s+/g, ' ').trim();
-            }
-            // --- 2. 正文抓取逻辑 (核心优化点) ---
-            const bodyContainer = el.querySelector('[data-hook="review-body"]') || el.querySelector('.reviewText') || el.querySelector('.review-text-content');
-
-            /**
-                 * 【关键修复】改进的正则表达式
-                 * 1. 使用 [\s\S]*? 代替 .*? 以跨行匹配
-                 * 2. 增加对 \d,\d 和 \d.\d 的双重支持
-                 * 3. 增加对多种语言星级后缀的覆盖
-                 */
-            // 2. 强力清洗（双保险）：如果克隆方案没去干净，再跑一次正则
-            const globalStarRegex = /^\d[.,]\d\s+(?:von\s+5\s+Sternen|out\s+of\s+5\s+stars|étoiles\s+sur\s+5|su\s+5\s+stelle|de\s+5\s+estrellas)/i;
-            cleanHeadline = cleanHeadline.replace(globalStarRegex, '').trim();
+        // --- 3. 跨语言日期解析引擎 (欧洲全站点支持) ---
+        const parseEuropeanDate = (text) => {
+            if (!text) return "";
+            // 清除介词 (如 "on", "am", "le", "il", "el", "op", "den", "w dniu")
+            const cleanStr = text.replace(/^.*?(on|am|le|il|el|op|den|dnia|w dniu)\s+/i, '').trim();
             
-            // 在亚马逊上，很多国际评论同步过来时确实是没有标题的
-            const isStillDirty = /^\d[.,]\d\s+(?:von|out)/i.test(cleanHeadline);
-            if (isStillDirty) {
-                // 如果抓出来还是只有星级，直接标记为无标题，避免显示丑陋的“5,0 von 5...”
-                cleanHeadline = ""; 
-            }
+            const months = {
+                jan: '01', feb: '02', mar: '03', apr: '04', mai: '05', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', okt: '10', oct: '10', nov: '11', dez: '12', dec: '12',
+                januar: '01', februar: '02', märz: '03', april: '04', juni: '06', juli: '07', august: '08', september: '09', oktober: '10', november: '11', dezember: '12',
+                janvier: '01', février: '02', mars: '03', mai: '05', juin: '06', juillet: '07', août: '08', octobre: '10', novembre: '11', décembre: '12',
+                gennaio: '01', febbraio: '02', marzo: '03', maggio: '05', giugno: '06', luglio: '07', agosto: '08', settembre: '09', ottobre: '10', novembre: '11', dicembre: '12',
+                enero: '01', febrero: '02', marzo: '03', mayo: '05', junio: '06', julio: '07', agosto: '08', septiembre: '09', octubre: '10', noviembre: '11', diciembre: '12',
+                stycznia: '01', lutego: '02', marca: '03', kwietnia: '04', maja: '05', czerwca: '06', lipca: '07', sierpnia: '08', września: '09', października: '10', listopada: '11', grudnia: '12'
+            };
 
-            let cleanBody = "";
-            if (bodyContainer) {
-                // 优先寻找原文内容 span (针对国际评论)
-                const originalContent = bodyContainer.querySelector('.cr-original-review-content');
-                if (originalContent) {
-                    cleanBody = originalContent.textContent.trim();
-                } else {
-                    // 如果不是国际评论，则取容器内的文本，但要避开脚本和样式
-                    const tempBody = bodyContainer.cloneNode(true);
-                    const scripts = tempBody.querySelectorAll('script, style, .a-expander-header');
-                    scripts.forEach(s => s.remove());
-                    cleanBody = tempBody.textContent.trim();
+            let foundMonth = "01";
+            for (const [name, num] of Object.entries(months)) {
+                if (cleanStr.toLowerCase().includes(name)) {
+                    foundMonth = num;
+                    break;
                 }
             }
-            // 清洗正文：去除多余换行，保持段落感
-            cleanBody = cleanBody.replace(/\n\s*\n/g, '\n').replace(/\s{2,}/g, ' ');
 
-            // 4. 获取日期和国家
-            // --- 3. 日期与国家 ---
-            const dateText = el.querySelector('[data-hook="review-date"]')?.innerText || "";
-            // 增强版国家提取：兼容 Reseñado en el Reino Unido (西班牙语等)
-            const countryMatch = dateText.match(/(?:in|aus|en|il|em|nel|su|von|från|z|u|en\sel)\s+(.+?)\s+(?:on|am|le|il|el|au|al|del|den|dnia|på|op|el)\s+\d/i);
+            const yearMatch = cleanStr.match(/\d{4}/);
+            const dayMatch = cleanStr.match(/\b\d{1,2}\b/);
+            return (yearMatch && dayMatch) ? `${yearMatch[0]}-${foundMonth}-${dayMatch[0].padStart(2, '0')}` : cleanStr;
+        };
 
-            return {
-                //"headline": getFirstValidText(config.reviewTitle, el).replace(/\d[.,]\d\s+.*?Sternen\s*/i, ''),
-                "headline": cleanHeadline || "No Title",
-                //"body": getFirstValidText(config.reviewBody, el),
-                "body": cleanBody || "No Content",
-                //"star_rating": extractStars(el),
-                "star_rating": (function(parent) {
-                    // 兼容你源码中德语逗号格式的解析
-                    const starEl = parent.querySelector('[data-hook*="star-rating"]') || parent.querySelector('.a-icon-star');
-                    const val = starEl?.getAttribute('aria-label') || starEl?.innerText || "0";
-                    const m = val.match(/(\d([.,]\d)?)/);
-                    return m ? parseFloat(m[0].replace(',', '.')) : 0;
-                })(el),
-                //"review_date": parseEuropeanDate(dateText),
-                // "review_date": el.querySelector('[data-hook="review-date"]')?.innerText || "",
-                "review_date": dateText,
-                "origin_country": countryMatch ? countryMatch[1].trim() : "Global"
-                };
-            }).filter(r => r.body.length > 5).slice(0, 10);
+        // --- 4. 抓取逻辑实现 ---
+        const getFirstValidText = (selectors, parent = document, useBlacklist = true) => {
+            for (const sel of selectors) {
+                const el = parent.querySelector(sel);
+                if (el && el.innerText.trim()) {
+                    const txt = el.innerText.trim();
+                    if (useBlacklist && BLACKLIST_REGEX.some(r => r.test(txt))) continue;
+                    return txt;
+                }
+            }   return "";
+        };
 
-            // 检查数量是否异常
-            let errorSummary = "";
-            if (feature_bullets.length > 0 && feature_bullets.length < 3) {
-                errorSummary = `抓取数量偏少(${feature_bullets.length}条)，可能存在漏抓`;
-            } else if (feature_bullets.length === 0) {
-                errorSummary = "未识别到任何描述点";
+        // 4.1 基本信息
+        const productTitle = getFirstValidText(config.productTitle);
+        const asin = document.querySelector('#ASIN')?.value || window.location.href.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/)?.[1] || "UNKNOWN";
+
+        // 4.2 五点描述 (带黑名单精滤)
+        let feature_bullets = [];
+        for (const sel of config.bulletPoints) {
+            const nodes = document.querySelectorAll(sel);
+            if (nodes.length > 0) {
+                const cleaned = Array.from(nodes)
+                
+                .filter(n => {
+                    // 1. 核心改进：必须位于 #feature-bullets 容器内
+                    const isInMainFeatureArea = n.closest('#feature-bullets') || n.closest('#featurebullets_feature_div') || n.closest('#productFactsDesktop_feature_div');
+                    // 1. 屏蔽详情参数区域
+                    const isDetails = n.closest('#prodDetails') || n.closest('#productDetails_feature_div');
+                    // 2. 屏蔽购物车/侧边栏区域
+                    const isSideBar = n.closest('#rightCol') || n.closest('#nav-flyout-ewc');
+                    // 3. 屏蔽客户评分分布区域
+                    const isCusterReview = n.closest('#a-fixed-left-grid-col a-col-left');
+                    // 4. 仅保留主内容区
+                    return isInMainFeatureArea && !isDetails && !isSideBar && !isCusterReview;
+                })
+                .map(n => {
+                    // 关键改动：获取该节点下的所有文本，防止 span 嵌套导致的文本断裂
+                    return n.textContent.replace(/\s+/g, ' ').trim(); 
+                })
+                .filter(t => t.length > 5); // 稍微放宽长度限制，现代版有些描述可能简短但重要
+
+                if (cleaned.length > 0) {
+                    feature_bullets = [...new Set(cleaned)].slice(0, 10);
+                    break;
+                }
+            }
+        }
+
+        // 4.3 评论 (跨站点位置解析)
+        let reviewNodes = [];
+        for (const sel of config.reviewContainers) {
+            const found = document.querySelectorAll(sel);
+            if (found.length > 0) { reviewNodes = Array.from(found); break; }
+        }
+        /**
+         * 增强版星级提取器：解决国际评论 rating 为 0 的问题
+         */
+        const extractStars = (parent) => {
+            // 1. 定义多重备选选择器（包含国际评论特有的 selector）
+            const starSelectors = [
+                '[data-hook="review-star-rating"]',
+                '[data-hook="cmps-review-star-rating"]',
+                '.review-rating',
+                'i.a-icon-star',
+                '.a-icon-alt' // 许多国际评论的星级文本隐藏在这里
+            ];
+            let rawValue = "";
+            for (const sel of starSelectors) {
+                const el = parent.querySelector(sel);
+                if (el) {
+                    // 依次尝试获取 aria-label, title 或 纯文本
+                    rawValue = el.getAttribute('aria-label') || el.getAttribute('title') || el.innerText || "";
+                    if (rawValue) break;
+                }
             }
 
-            return {
-                "products": [{
-                    "asin": asin,
-                    "productTitle": productTitle,
-                    "feature_bullets": feature_bullets,
-                    "customer_reviews": customer_reviews,
-                    //"error_summary": errorSummary, // 将摘要传回 popup.js 展示
-                    //"error_summary": customer_reviews.some(r => r.headline === "No Title") ? "部分标题缺失" : "",
-                    "scrape_status": productTitle ? "success" : "failed"
-                }]
+            if (!rawValue) return 0;
+
+            // 2. 核心修复：处理欧洲数字格式 (例如 "4,8" 或 "4.8")
+            // 正则匹配：找到数字部分，支持逗号或点号
+            const match = rawValue.match(/(\d([.,]\d)?)/);
+            if (match) {
+                // 将逗号统一替换为点号，以便 parseFloat 正确转换
+                const numStr = match[0].replace(',', '.');
+                return parseFloat(numStr);
+            }   return 0;
+        };
+
+        const customer_reviews = reviewNodes.map(el => {
+
+        // 1. 获取原始标题 (关闭黑名单，确保拿到原始字符串)
+        // 1. 获取标题节点
+        const titleEl = el.querySelector('[data-hook="review-title"]') || 
+            el.querySelector('.review-title-content') || 
+            el.querySelector('a[data-hook="review-title"]');
+            // 2. 强力清洗逻辑
+        let cleanHeadline = "";
+        if (titleEl) {
+            // 【关键修复】：不直接使用 innerText，而是克隆节点并移除掉其中的星级 span
+            // 这样可以彻底隔离“5,0 von 5 Sternen”这些干扰文字
+            const tempTitle = titleEl.cloneNode(true);
+            // 移除星级干扰和可能的翻译占位符
+            const noise = tempTitle.querySelectorAll('.a-icon-alt, .cr-translated-review-content, i');
+            noise.forEach(n => n.remove());
+            cleanHeadline = tempTitle.textContent.replace(/\s+/g, ' ').trim();
+        }
+        // --- 2. 正文抓取逻辑 (核心优化点) ---
+        const bodyContainer = el.querySelector('[data-hook="review-body"]') || el.querySelector('.reviewText') || el.querySelector('.review-text-content');
+
+        /**
+             * 【关键修复】改进的正则表达式
+             * 1. 使用 [\s\S]*? 代替 .*? 以跨行匹配
+             * 2. 增加对 \d,\d 和 \d.\d 的双重支持
+             * 3. 增加对多种语言星级后缀的覆盖
+             */
+        // 2. 强力清洗（双保险）：如果克隆方案没去干净，再跑一次正则
+        const globalStarRegex = /^\d[.,]\d\s+(?:von\s+5\s+Sternen|out\s+of\s+5\s+stars|étoiles\s+sur\s+5|su\s+5\s+stelle|de\s+5\s+estrellas)/i;
+        cleanHeadline = cleanHeadline.replace(globalStarRegex, '').trim();
+        
+        // 在亚马逊上，很多国际评论同步过来时确实是没有标题的
+        const isStillDirty = /^\d[.,]\d\s+(?:von|out)/i.test(cleanHeadline);
+        if (isStillDirty) {
+            // 如果抓出来还是只有星级，直接标记为无标题，避免显示丑陋的“5,0 von 5...”
+            cleanHeadline = ""; 
+        }
+
+        let cleanBody = "";
+        if (bodyContainer) {
+            // 优先寻找原文内容 span (针对国际评论)
+            const originalContent = bodyContainer.querySelector('.cr-original-review-content');
+            if (originalContent) {
+                cleanBody = originalContent.textContent.trim();
+            } else {
+                // 如果不是国际评论，则取容器内的文本，但要避开脚本和样式
+                const tempBody = bodyContainer.cloneNode(true);
+                const scripts = tempBody.querySelectorAll('script, style, .a-expander-header');
+                scripts.forEach(s => s.remove());
+                cleanBody = tempBody.textContent.trim();
+            }
+        }
+        // 清洗正文：去除多余换行，保持段落感
+        cleanBody = cleanBody.replace(/\n\s*\n/g, '\n').replace(/\s{2,}/g, ' ');
+
+        // 4. 获取日期和国家
+        // --- 3. 日期与国家 ---
+        const dateText = el.querySelector('[data-hook="review-date"]')?.innerText || "";
+        // 增强版国家提取：兼容 Reseñado en el Reino Unido (西班牙语等)
+        const countryMatch = dateText.match(/(?:in|aus|en|il|em|nel|su|von|från|z|u|en\sel)\s+(.+?)\s+(?:on|am|le|il|el|au|al|del|den|dnia|på|op|el)\s+\d/i);
+
+        return {
+            "headline": cleanHeadline || "No Title",
+            "body": cleanBody || "No Content",
+            "star_rating": (function(parent) {
+                // 兼容你源码中德语逗号格式的解析
+                const starEl = parent.querySelector('[data-hook*="star-rating"]') || parent.querySelector('.a-icon-star');
+                const val = starEl?.getAttribute('aria-label') || starEl?.innerText || "0";
+                const m = val.match(/(\d([.,]\d)?)/);
+                return m ? parseFloat(m[0].replace(',', '.')) : 0;
+            })(el),
+            "review_date": dateText,
+            "origin_country": countryMatch ? countryMatch[1].trim() : "Global"
             };
+        }).filter(r => r.body.length > 5).slice(0, 10);
+
+        // 检查数量是否异常
+        let errorSummary = "";
+        if (feature_bullets.length > 0 && feature_bullets.length < 3) {
+            errorSummary = `抓取数量偏少(${feature_bullets.length}条)，可能存在漏抓`;
+        } else if (feature_bullets.length === 0) {
+            errorSummary = "未识别到任何描述点";
+        }
+
+        return {
+            "products": [{
+                "asin": asin,
+                "productTitle": productTitle,
+                "feature_bullets": feature_bullets,
+                "customer_reviews": customer_reviews,
+                //"error_summary": errorSummary, // 将摘要传回 popup.js 展示
+                //"error_summary": customer_reviews.some(r => r.headline === "No Title") ? "部分标题缺失" : "",
+                "scrape_status": productTitle ? "success" : "failed"
+            }]
+        };
 
         } catch (e) {
             return { products: [{ scrape_status: "failed", error: e.message }] };
