@@ -24,28 +24,56 @@ document.getElementById('scrapeBtn').addEventListener('click', async () => {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
         // 注入脚本
+        // popup.js 增强后的回调逻辑
         chrome.scripting.executeScript({
             target: { tabId: tab.id },
-            func: scrapeAmazonLogic // 逻辑函数在下方定义
+            func: scrapeAmazonLogic 
         }, (results) => {
-            if (chrome.runtime.lastError || !results || !results[0].result) {
-                status.innerText = "❌ Connection failed or invalid page.";
+            // 隐藏加载动画
+            document.getElementById('loader').style.display = "none";
+
+            // 情况 A: 脚本注入失败（通常是权限或特殊页面问题）
+            if (chrome.runtime.lastError || !results || !results[0]) {
+                const errorMsg = chrome.runtime.lastError ? chrome.runtime.lastError.message : "无法访问页面内容";
+                showError("连接失败", "无法在当前页面运行脚本。请确保你在亚马逊商品详情页，并授予了插件权限。");
+                console.error("Injection Error:", errorMsg);
                 return;
             }
 
             finalData = results[0].result;
             const prod = finalData.products[0];
 
+            // 情况 B: 脚本运行成功，但逻辑判断为抓取失败
             if (prod.scrape_status === "failed") {
-                status.innerText = "❌ Error: " + prod.error;
+                let summary = "解析失败";
+                let detail = prod.error || "未能识别商品信息。";
+                
+                // 简单错误摘要化映射
+                if (detail.includes("Cannot read properties")) summary = "页面结构匹配失败";
+                if (!prod.productTitle) summary = "未找到商品标题";
+                
+                showError(summary, detail);
                 return;
             }
 
-            status.innerText = "✅ Analysis Complete";
+            // 情况 C: 抓取成功
+            status.style.display = "block";
+            status.className = "success";
+            status.innerText = "✅ 分析完成";
             mdPreview.style.display = "block";
             downloadBtn.style.display = "block";
             renderPreview(prod);
         });
+
+        // 辅助函数：美化错误显示
+        function showError(summary, detail) {
+            const status = document.getElementById('status');
+            status.style.display = "block";
+            status.style.background = "#FFF5F5";
+            status.style.color = "#C53030";
+            status.style.border = "1px solid #FEB2B2";
+            status.innerHTML = `<strong>${summary}</strong>: <span style="font-size:12px">${detail}</span>`;
+        }
     } catch (err) {
         status.innerText = "❌ Extension Error: " + err.message;
     }
