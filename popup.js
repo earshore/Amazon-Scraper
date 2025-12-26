@@ -108,161 +108,6 @@ document.getElementById('downloadBtn').addEventListener('click', () => {
  * 核心抓取逻辑：将被注入到 Amazon 页面执行
  * 辅助函数必须放在此函数内部
  */
-// function scrapeAmazonLogic() {
-//     try {
-//         // --- 内部辅助工具 ---
-//         const getText = (selectors) => {
-//             for (const selector of selectors) {
-//                 const el = document.querySelector(selector);
-//                 if (el && el.innerText.trim()) return el.innerText.trim();
-//             }
-//             return "";
-//         };
-
-//         const extractStars = (el) => {
-//             // 兼容多种星星图标的选择器
-//             const starIcon = el.querySelector('[data-hook="review-star-rating"], .a-icon-star, .i-stars');
-//             if (!starIcon) return 0;
-//             const rawText = starIcon.getAttribute('aria-label') || starIcon.getAttribute('title') || starIcon.innerText || "";
-//             // 匹配数字，支持 4.5 或 4,5 (欧洲格式)
-//             const match = rawText.match(/(\d([.,]\d)?)/);
-//             return match ? parseFloat(match[0].replace(',', '.')) : 0;
-//         };
-
-//         const parseDate = (s) => {
-//             if (!s) return "";
-//             // 移除前缀词汇如 "Reviewed in..." 或 "Rezension aus..."
-//             const cleanStr = s.replace(/^.*?(on|am|au|il|el)\s+/i, '').trim();
-            
-//             // 常见的月份映射（扩展以支持更多站点）
-//             const monthMap = {
-//                 "Januar": "01", "Janvier": "01", "January": "01",
-//                 "Februar": "02", "Février": "02", "February": "02",
-//                 "März": "03", "Mars": "03", "March": "03",
-//                 "April": "04", "Avril": "04",
-//                 "Mai": "05", "May": "05",
-//                 "Juni": "06", "Juin": "06", "June": "06",
-//                 "Juli": "07", "Juillet": "07", "July": "07",
-//                 "August": "08", "Août": "08",
-//                 "September": "09", "Septembre": "09",
-//                 "Oktober": "10", "Octobre": "10", "October": "10",
-//                 "November": "11", "Novembre": "11",
-//                 "Dezember": "12", "Décembre": "12", "December": "12"
-//             };
-
-//             // 尝试匹配 DD. Month YYYY 或 Month DD, YYYY
-//             for (const [name, num] of Object.entries(monthMap)) {
-//                 if (cleanStr.includes(name)) {
-//                     const yearMatch = cleanStr.match(/\d{4}/);
-//                     const dayMatch = cleanStr.match(/\b\d{1,2}\b/);
-//                     if (yearMatch && dayMatch) {
-//                         return `${yearMatch[0]}-${num}-${dayMatch[0].padStart(2, '0')}`;
-//                     }
-//                 }
-//             }
-            
-//             const dateObj = new Date(cleanStr);
-//             return !isNaN(dateObj) ? dateObj.toISOString().split('T')[0] : cleanStr;
-//         };
-
-//         // --- 数据提取核心逻辑 ---
-        
-//         // 1. 标题提取：增加多种备选
-//         const productTitle = getText([
-//             '#productTitle',
-//             'h1.a-size-large',
-//             '.qa-title-text',
-//             '#title'
-//         ]);
-
-//         // 2. ASIN 提取：从 URL 或隐藏域获取
-//         let asin = "UNKNOWN";
-//         const asinMatch = window.location.href.match(/\/(?:dp|gp\/product|product-reviews)\/([A-Z0-9]{10})/);
-//         if (asinMatch) {
-//             asin = asinMatch[1];
-//         } else {
-//             asin = document.querySelector('#ASIN')?.value || "UNKNOWN";
-//         }
-
-//         // 3. 五点描述：增加对不同布局的支持
-//         const bulletSelectors = [
-//             '#feature-bullets li span.a-list-item',
-//             '.a-unordered-list.a-vertical.a-spacing-mini li span.a-list-item',
-//             '#featurebullets_feature_div li'
-//         ];
-//         let feature_bullets = [];
-//         for (const sel of bulletSelectors) {
-//             const items = Array.from(document.querySelectorAll(sel));
-//             if (items.length > 0) {
-//                 feature_bullets = items
-//                     .map(el => el.innerText.trim())
-//                     .filter(t => t.length > 5 && !/Check compatibility|Make sure this fits/i.test(t));
-//                 if (feature_bullets.length > 0) break;
-//             }
-//         }
-
-//         // 4. 评论抓取
-// // --- 核心修复：从评论内容中抓取国家 ---
-// // 在 scrapeAmazonLogic 内部修改评论抓取部分
-// const reviewElements = document.querySelectorAll('[data-hook="review"], .review');
-
-// const customer_reviews = Array.from(reviewElements)
-//     .map(el => {
-//         const headlineEl = el.querySelector('[data-hook="review-title"], .review-title');
-//         let rawHeadline = headlineEl?.innerText || "";
-//         let cleanHeadline = rawHeadline.replace(/(\d[\.,]\d out of 5 stars|\d[\.,]\d von 5 Sternen)/gi, '').trim();
-        
-//         const bodyText = el.querySelector('[data-hook="review-body"], .review-text')?.innerText?.trim() || "";
-        
-//         // 提取国家逻辑保持不变
-//         const dateAndLocationText = el.querySelector('[data-hook="review-date"], .review-date')?.innerText || "";
-//         const regex = /(?:in|aus|en|il|em|nel|su|von|från|z|u)\s+(.+?)\s+(?:on|am|le|il|el|au|al|del|am|den|dnia|på|den)\s+\d/i;
-//         const locationMatch = dateAndLocationText.match(regex);
-//         //const locationMatch = dateAndLocationText.match(/(?:in|aus|en|il)\s+(.+?)\s+(?:on|am|le|il|el|au)\s+\d/i);
-//         const review_country = locationMatch ? locationMatch[1].trim() : "Global";
-
-//         return {
-//             "headline": cleanHeadline,
-//             "body": bodyText,
-//             "star_rating": extractStars(el),
-//             "is_verified": !!el.querySelector('[data-hook="avp-verified-purchase-badge"]'),
-//             "review_date": parseDate(dateAndLocationText),
-//             "origin_country": review_country
-//         };
-//     })
-//     // --- 关键优化：过滤掉标题和正文都为空的无效数据 ---
-//     .filter(r => r.headline.length > 0 || r.body.length > 0) 
-//     .slice(0, 10);
-
-//     // ... 前面提取 productTitle, asin, feature_bullets, customer_reviews 的逻辑保持不变 ...
-
-//     // 新增：获取当前页面语言的逻辑
-//     const pageLanguage = document.documentElement.lang || "Unknown";
-
-//     return {
-//         "metadata": {
-//             "scrape_timestamp": new Date().toISOString(),
-//             "marketplace": window.location.hostname.split('.').pop().toUpperCase(),
-//             "domain": window.location.hostname,
-//             "language": pageLanguage, // 对应示例中的 language
-//             "total_asins": 1           // 当前逻辑每次抓取 1 个 ASIN
-//         },
-//         "products": [{
-//             "asin": asin,
-//             "url": window.location.href, // 对应示例中的 url
-//             "language": pageLanguage,    // 对应示例中的 language
-//             "productTitle": productTitle,
-//             "feature_bullets": feature_bullets,
-//             "customer_reviews": customer_reviews,
-//             "scrape_status": productTitle ? "success" : "failed",
-//             "error": productTitle ? "" : "Title not found"
-//         }]
-//     };
-//     } catch (e) {
-//         return { products: [{ scrape_status: "failed", error: e.message }] };
-//     }
-// }
-
 function scrapeAmazonLogic() {
     try {
         // --- 1. 配置：多重备选选择器 (基于你提供的增强版) ---
@@ -290,7 +135,6 @@ function scrapeAmazonLogic() {
             /Auf Lager|In Stock|Disponibile|En stock|Op voorraad|I lager|W magazynie/i,
             /Wird in einem neuen Tab|New tab|Nuova scheda|Nouvel onglet/i,
             /Einkaufswagen|Basket|Panier|Carrello|Carrito|Winkelwagen|Varukorg|Koszyk/i,
-            /detail-bullet|productDetails|detailBullets_feature_div/i,
             /Sponsored|Gesponsert|Sponsorizzato|Patrocinado|Gesponsord/i,
             /Nützlich|Helpful|Utile|Útil/i, // 投票按钮文字
             /Missbrauch melden|Report abuse|Signaler un abus/i, // 举报按钮
@@ -298,7 +142,15 @@ function scrapeAmazonLogic() {
             /Aktualisierung\s+fehlgeschlagen/i, // 匹配：更新失败
             /nicht\s+für\s+später\s+speichern/i, // 匹配：无法保存
             /Versuche\s+es\s+noch\s+einmal/i,    // 匹配：重试提示
-            /wurde\s+bereits\s+aus\s+dem/i       // 匹配：已从购物车移除
+            /wurde\s+bereits\s+aus\s+dem/i,       // 匹配：已从购物车移除
+            /Warenkorb|Cart|Panier|Carrello|Carrito|Winkelwagen|Koszyk/i, 
+            /Zur Kasse gehen|Proceed to checkout|Passer la commande/i,
+            /Zahlungsmethode|Payment|Paiement|Pagamento/i,
+            /Zwischensumme|Subtotal|Sous-total|Subtotale/i,
+            /In den Einkaufswagen|Add to Cart|Ajouter au panier/i,
+            /Versandkostenfrei|Free shipping|Livraison gratuite/i,
+            /Löschen|Delete|Supprimer|Rimuovi|Eliminar/i, // 购物车中的删除按钮
+            /Später speichern|Save for later|Mettre de côté/i
 
         ];
 
@@ -352,10 +204,22 @@ function scrapeAmazonLogic() {
             const nodes = document.querySelectorAll(sel);
             if (nodes.length > 0) {
                 const cleaned = Array.from(nodes)
+                
+                    .filter(n => {
+                    // 1. 屏蔽详情参数区域
+                    const isDetailBullet = n.closest('#detailBullets_feature_div') || n.closest('#productDetails_feature_div');
+                    // 2. 屏蔽购物车/侧边栏区域
+                    const isSideBar = n.closest('#rightCol') || n.closest('#nav-flyout-ewc');
+                    // 3. 屏蔽客户评分分布区域
+                    const isRatingHistogram = n.closest('#a-fixed-left-grid-col a-col-left');
+
+                    return !isDetailBullet && !isSideBar && !isRatingHistogram;
+                })
+
                     .map(n => n.innerText.trim())
                     .filter(t => t.length > 8 && !BLACKLIST_REGEX.some(r => r.test(t)));
                 if (cleaned.length > 0) {
-                    feature_bullets = [...new Set(cleaned)].slice(0, 10);
+                    feature_bullets = [...new Set(cleaned)].slice(0, 5);
                     break;
                 }
             }
