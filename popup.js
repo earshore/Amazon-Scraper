@@ -141,7 +141,16 @@ function scrapeAmazonLogic() {
         // --- 1. 配置：多重备选选择器 (基于你提供的增强版) ---
         const config = {
             productTitle: ['#productTitle', '#title', 'h1[data-automation-id="title"]', 'span#productTitle', '#titleSection #title'],
-            bulletPoints: ['#feature-bullets ul li span.a-list-item', '#feature-bullets li span', '.a-unordered-list.a-vertical li span', '#featurebullets_feature_div li span'],
+            //: ['.a-unordered-list.a-vertical li span', '#feature-bullets ul li span.a-list-item', '#feature-bullets li span', '#featurebullets_feature_div li span'],
+            // 修改 config 里的选择器，优先抓取 li 或带有 a-list-item 的容器
+            bulletPoints: [
+                '#feature-bullets ul li .a-list-item', // 经典版最准
+                '#productFactsDesktop_feature_div ul li', // 现代版最准
+                '.a-unordered-list.a-vertical li', // 通用备选，不再直接指点到 span
+                '#feature-bullets li',
+                '#featurebullets_feature_div li'
+                
+            ],
             reviewContainers: ['[data-hook="review"]', '.review', '.a-section.review', '#cm_cr-review_list .review', '.cr-widget-Reviews .review'],
             reviewBody: ['[data-hook="review-body"] span:not(.cr-original-review-content)', '[data-hook="review-body"]', '.review-text-content span', '.review-text span', '.reviewText', 'span[data-hook="review-body"]', '.a-size-base.review-text'],
             reviewTitle: ['[data-hook="review-title"] span:not(.a-letter-space)', '[data-hook="review-title"]', '.review-title span', '.a-size-base.a-link-normal.review-title', 'a[data-hook="review-title"]'],
@@ -234,20 +243,31 @@ function scrapeAmazonLogic() {
                 const cleaned = Array.from(nodes)
                 
                     .filter(n => {
+                    // 1. 核心改进：必须位于 #feature-bullets 容器内
+                    const isInMainFeatureArea = n.closest('#feature-bullets') || n.closest('#featurebullets_feature_div') || n.closest('#productFactsDesktop_feature_div');
+
                     // 1. 屏蔽详情参数区域
-                    const isDetailBullet = n.closest('#detailBullets_feature_div') || n.closest('#productDetails_feature_div');
+                    const isDetails = n.closest('#prodDetails') || n.closest('#productDetails_feature_div');
                     // 2. 屏蔽购物车/侧边栏区域
                     const isSideBar = n.closest('#rightCol') || n.closest('#nav-flyout-ewc');
                     // 3. 屏蔽客户评分分布区域
-                    const isreviewsMedleyleftgridcol = n.closest('#a-fixed-left-grid-col a-col-left');
+                    const isCusterReview = n.closest('#a-fixed-left-grid-col a-col-left');
+                    // 4. 仅保留主内容区
 
-                    return !isDetailBullet && !isSideBar && !isreviewsMedleyleftgridcol;
+                    return isInMainFeatureArea && !isDetails && !isSideBar && !isCusterReview;
                 })
 
-                    .map(n => n.innerText.trim())
-                    .filter(t => t.length > 8 && !BLACKLIST_REGEX.some(r => r.test(t)));
+                    // .map(n => n.innerText.trim())
+                    // .filter(t => t.length > 8 && !BLACKLIST_REGEX.some(r => r.test(t)));
+
+                    .map(n => {
+                        // 关键改动：获取该节点下的所有文本，防止 span 嵌套导致的文本断裂
+                        return n.textContent.replace(/\s+/g, ' ').trim(); 
+                    })
+                    .filter(t => t.length > 5); // 稍微放宽长度限制，现代版有些描述可能简短但重要
+
                 if (cleaned.length > 0) {
-                    feature_bullets = [...new Set(cleaned)].slice(0, 5);
+                    feature_bullets = [...new Set(cleaned)].slice(0, 10);
                     break;
                 }
             }
@@ -311,15 +331,26 @@ function scrapeAmazonLogic() {
             };
         }).filter(r => r.body.length > 5).slice(0, 10);
 
+
+        // 检查数量是否异常
+        let errorSummary = "";
+        if (feature_bullets.length > 0 && feature_bullets.length < 3) {
+            errorSummary = `抓取数量偏少(${feature_bullets.length}条)，可能存在漏抓`;
+        } else if (feature_bullets.length === 0) {
+            errorSummary = "未识别到任何描述点";
+        }
+
         return {
             "products": [{
-                "asin": asin,
-                "productTitle": productTitle,
+                        "asin": asin,
+                        "productTitle": productTitle,
                 "feature_bullets": feature_bullets,
-                "customer_reviews": customer_reviews,
+                        "customer_reviews": customer_reviews,
+                "error_summary": errorSummary, // 将摘要传回 popup.js 展示
                 "scrape_status": productTitle ? "success" : "failed"
             }]
         };
+
     } catch (e) {
         return { products: [{ scrape_status: "failed", error: e.message }] };
     }
