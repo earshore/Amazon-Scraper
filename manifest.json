@@ -11,16 +11,16 @@
   },
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": [
-    "https://www.amazon.de/*",
-    "https://www.amazon.fr/*",
-    "https://www.amazon.it/*",
-    "https://www.amazon.es/*",
-    "https://www.amazon.nl/*",
-    "https://www.amazon.se/*",
-    "https://www.amazon.pl/*",
-    "https://www.amazon.com.be/*",   
-    "https://www.amazon.co.uk/*",
-    "https://www.amazon.com/*"
+    "https://*.amazon.de/*",
+    "https://*.amazon.fr/*",
+    "https://*.amazon.it/*",
+    "https://*.amazon.es/*",
+    "https://*.amazon.nl/*",
+    "https://*.amazon.se/*",
+    "https://*.amazon.pl/*",
+    "https://*.amazon.com.be/*",   
+    "https://*.amazon.co.uk/*",
+    "https://*.amazon.com/*"
   ],
   "action": {
     "default_popup": "popup.html",

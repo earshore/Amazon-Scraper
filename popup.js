@@ -211,9 +211,9 @@ function scrapeAmazonLogic() {
                     // 2. 屏蔽购物车/侧边栏区域
                     const isSideBar = n.closest('#rightCol') || n.closest('#nav-flyout-ewc');
                     // 3. 屏蔽客户评分分布区域
-                    const isRatingHistogram = n.closest('#a-fixed-left-grid-col a-col-left');
+                    const isreviewsMedleyleftgridcol = n.closest('#a-fixed-left-grid-col a-col-left');
 
-                    return !isDetailBullet && !isSideBar && !isRatingHistogram;
+                    return !isDetailBullet && !isSideBar && !isreviewsMedleyleftgridcol;
                 })
 
                     .map(n => n.innerText.trim())
