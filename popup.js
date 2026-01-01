@@ -167,26 +167,25 @@ function renderPreview(prod) {
                 <div style="display: flex; align-items: center; margin-bottom: 4px;">
                     <div style="display: flex; color: #DE7921; font-size: 15px; margin-right: 8px;">
                         ${Array.from(
-                          { length: 5 },
-                          (_, i) =>
-                            `<span style="margin-right: -1px;">${
-                              i < r.star_rating
-                                ? "★"
-                                : '<span style="color:#ccc">☆</span>'
-                            }</span>`
-                        ).join("")}
+          { length: 5 },
+          (_, i) =>
+            `<span style="margin-right: -1px;">${i < r.star_rating
+              ? "★"
+              : '<span style="color:#ccc">☆</span>'
+            }</span>`
+        ).join("")}
                     </div>
                     <span style="font-weight: 700; color: #0F1111; font-size: 14px;">${escapeHtml(
-                      r.headline
-                    )}</span>
+          r.headline
+        )}</span>
                 </div>
                 <div style="color: #565959; font-size: 13px;">
                     ${escapeHtml(r.review_date)}
                                         
                 </div>
                 <div style="color: #0F1111; font-size: 14px; margin-top: 8px;">${escapeHtml(
-                  r.body
-                )}</div>
+          r.body
+        )}</div>
             </div>
         `
       )
@@ -198,11 +197,11 @@ function renderPreview(prod) {
 
   preview.innerHTML = `
         <div style="font-size: 18px; font-weight: 700; color: #0F1111;">${escapeHtml(
-          prod.productTitle
-        )}</div>
+    prod.productTitle
+  )}</div>
         <div style="font-size: 12px; color: #565959; margin-bottom: 15px;">ASIN: ${escapeHtml(
-          prod.asin
-        )}</div>
+    prod.asin
+  )}</div>
         <div style="font-weight: 700; border-bottom: 2px solid #eee;">About this item</div>
         <ul style="font-size: 13px; padding-left: 20px;">${bulletsHtml}</ul>
         <div style="font-weight: 700; margin-top:15px; border-bottom: 2px solid #eee;">Reviews</div>
@@ -298,6 +297,32 @@ function scrapeAmazonLogic() {
         "i.a-icon-star",
       ],
     };
+
+    // ============================================================
+    // 1. 新增：Marketplace 识别逻辑
+    // ============================================================
+    const host = window.location.hostname;
+    const marketplaceMap = {
+      "amazon.de": "DE",
+      "amazon.fr": "FR",
+      "amazon.it": "IT",
+      "amazon.es": "ES",
+      "amazon.nl": "NL",
+      "amazon.se": "SE",
+      "amazon.pl": "PL",
+      "amazon.com.be": "BE",
+      "amazon.co.uk": "UK",
+      "amazon.com": "US",
+      "amazon.ie": "IE"
+    };
+
+    let marketplace = "OTHER";
+    for (const [domain, code] of Object.entries(marketplaceMap)) {
+      if (host.includes(domain)) {
+        marketplace = code;
+        break;
+      }
+    }
 
     // --- 2. 黑名单正则 ---
     const BLACKLIST_REGEX = [
@@ -624,6 +649,7 @@ function scrapeAmazonLogic() {
     return {
       products: [
         {
+          marketplace: marketplace, // <--- 这里是新增的字段
           asin: asin,
           productTitle: productTitle,
           feature_bullets: feature_bullets,
