@@ -102,6 +102,13 @@ function startScraping(tab) {
       }
 
       finalData = results[0].result;
+
+      // 【注意】结构变更兼容：检查 products 数组
+      if (!finalData.products || finalData.products.length === 0) {
+        showError("解析失败", "未找到商品信息");
+        return;
+      }
+      
       const prod = finalData.products[0];
 
       if (prod.scrape_status === "failed") {
@@ -221,8 +228,15 @@ document.getElementById("downloadBtn").addEventListener("click", () => {
 
   try {
     const product = finalData.products[0];
-    // 2. 容错处理：如果 ASIN 缺失，使用时间戳命名
-    const fileName = `Amz_Scrape_${product.asin || new Date().getTime()}.json`;
+    
+    // 2. 优先使用 metadata 中的时间戳，如果没有则生成新的
+    let timestampStr = new Date().getTime();
+    if (finalData.metadata && finalData.metadata.scrape_timestamp) {
+        // 将 ISO 时间处理为文件名友好格式 (例如 2026-01-01T12-00-00)
+        timestampStr = finalData.metadata.scrape_timestamp.replace(/[:.]/g, "-").slice(0, 19);
+    }
+
+    const fileName = `Amz_${product.asin || "Unknown"}_${timestampStr}.json`;
 
     const blob = new Blob([JSON.stringify(finalData, null, 2)], {
       type: "application/json",
@@ -260,7 +274,6 @@ function scrapeAmazonLogic() {
         "span#productTitle",
         "#titleSection #title",
       ],
-      // 修改 config 里的选择器，优先抓取 li 或带有 a-list-item 的容器
       bulletPoints: [
         "#feature-bullets ul li .a-list-item", // 经典版最准
         "#productFactsDesktop_feature_div ul li", // 现代版最准
@@ -283,7 +296,6 @@ function scrapeAmazonLogic() {
         ".a-size-base.review-text",
         ".cr-original-review-content",
       ],
-      // 强化标题选择器：优先抓取具体文本节点
       reviewTitle: [
         '[data-hook="review-title"] span:not(.a-letter-space)',
         'a[data-hook="review-title"] span:not(.a-letter-space)',
@@ -324,6 +336,23 @@ function scrapeAmazonLogic() {
       }
     }
 
+    // ============================================================
+    // 2. 新增：Metadata 所需的语言与时间戳
+    // ============================================================
+    const now = new Date().toISOString();
+    
+    // 简单的语言映射表
+    const langCode = document.documentElement.lang.split('-')[0].toLowerCase();
+    const fullLangMap = {
+      "de": "German", "en": "English", "fr": "French",
+      "it": "Italian", "es": "Spanish", "nl": "Dutch",
+      "pl": "Polish", "sv": "Swedish", "be":"French",
+      "ie":"English","tr": "Turkish", "us":"English",
+      "pt": "Portuguese", "ja": "Japanese", "zh": "Chinese"
+    };
+    // 如果映射不到，首字母大写返回 (例如 "zh" -> "Zh")
+    const language = fullLangMap[langCode] || (langCode.charAt(0).toUpperCase() + langCode.slice(1));
+
     // --- 2. 黑名单正则 ---
     const BLACKLIST_REGEX = [
       /von 5 Sternen|out of 5 stars|étoiles sur 5/i,
@@ -341,76 +370,19 @@ function scrapeAmazonLogic() {
         .trim();
       // 月份映射
       const months = {
-        jan: "01",
-        feb: "02",
-        mar: "03",
-        apr: "04",
-        mai: "05",
-        may: "05",
-        jun: "06",
-        jul: "07",
-        aug: "08",
-        sep: "09",
-        okt: "10",
-        oct: "10",
-        nov: "11",
-        dez: "12",
-        dec: "12",
-        januar: "01",
-        februar: "02",
-        märz: "03",
-        april: "04",
-        juni: "06",
-        juli: "07",
-        august: "08",
-        september: "09",
-        oktober: "10",
-        november: "11",
-        dezember: "12",
-        janvier: "01",
-        février: "02",
-        mars: "03",
-        mai: "05",
-        juin: "06",
-        juillet: "07",
-        août: "08",
-        octobre: "10",
-        novembre: "11",
-        décembre: "12",
-        gennaio: "01",
-        febbraio: "02",
-        marzo: "03",
-        maggio: "05",
-        giugno: "06",
-        luglio: "07",
-        agosto: "08",
-        settembre: "09",
-        ottobre: "10",
-        novembre: "11",
-        dicembre: "12",
-        enero: "01",
-        febrero: "02",
-        marzo: "03",
-        mayo: "05",
-        junio: "06",
-        julio: "07",
-        agosto: "08",
-        septiembre: "09",
-        octubre: "10",
-        noviembre: "11",
-        diciembre: "12",
-        stycznia: "01",
-        lutego: "02",
-        marca: "03",
-        kwietnia: "04",
-        maja: "05",
-        czerwca: "06",
-        lipca: "07",
-        sierpnia: "08",
-        września: "09",
-        października: "10",
-        listopada: "11",
-        grudnia: "12",
+        jan: "01", feb: "02", mar: "03", apr: "04", mai: "05", may: "05", jun: "06",
+        jul: "07", aug: "08", sep: "09", okt: "10", oct: "10", nov: "11", dez: "12",
+        dec: "12", januar: "01", februar: "02", märz: "03", april: "04", juni: "06",
+        juli: "07", august: "08", september: "09", oktober: "10", november: "11",
+        dezember: "12", janvier: "01", février: "02", mars: "03", mai: "05", juin: "06",
+        juillet: "07", août: "08", octobre: "10", novembre: "11", décembre: "12",
+        gennaio: "01", febbraio: "02", marzo: "03", maggio: "05", giugno: "06",
+        luglio: "07", agosto: "08", settembre: "09", ottobre: "10", novembre: "11",
+        dicembre: "12", enero: "01", febrero: "02", marzo: "03", mayo: "05",
+        junio: "06", julio: "07", agosto: "08", septiembre: "09", octubre: "10",
+        noviembre: "11", diciembre: "12", stycznia: "01", lutego: "02", marca: "03",
+        kwietnia: "04", maja: "05", czerwca: "06", lipca: "07", sierpnia: "08",
+        września: "09", października: "10", listopada: "11", grudnia: "12",
       };
       // 查找月份
       let foundMonth = "01";
@@ -459,7 +431,6 @@ function scrapeAmazonLogic() {
       const nodes = document.querySelectorAll(sel);
       if (nodes.length > 0) {
         const cleaned = Array.from(nodes)
-
           .filter((n) => {
             // 1. 核心改进：必须位于 #feature-bullets 容器内
             const isInMainFeatureArea =
@@ -504,9 +475,7 @@ function scrapeAmazonLogic() {
         break;
       }
     }
-    /**
-     * 增强版星级提取器：解决国际评论 rating 为 0 的问题
-     */
+    
     const extractStars = (parent) => {
       // 1. 定义多重备选选择器（包含国际评论特有的 selector）
       const starSelectors = [
@@ -555,7 +524,6 @@ function scrapeAmazonLogic() {
         let cleanHeadline = "";
         if (titleEl) {
           // 【关键修复】：不直接使用 innerText，而是克隆节点并移除掉其中的星级 span
-          // 这样可以彻底隔离“5,0 von 5 Sternen”这些干扰文字
           const tempTitle = titleEl.cloneNode(true);
           // 移除星级干扰和可能的翻译占位符
           const noise = tempTitle.querySelectorAll(
@@ -570,12 +538,6 @@ function scrapeAmazonLogic() {
           el.querySelector(".reviewText") ||
           el.querySelector(".review-text-content");
 
-        /**
-         * 【关键修复】改进的正则表达式
-         * 1. 使用 [\s\S]*? 代替 .*? 以跨行匹配
-         * 2. 增加对 \d,\d 和 \d.\d 的双重支持
-         * 3. 增加对多种语言星级后缀的覆盖
-         */
         // 2. 强力清洗（双保险）：如果克隆方案没去干净，再跑一次正则
         const globalStarRegex =
           /^\d[.,]\d\s+(?:von\s+5\s+Sternen|out\s+of\s+5\s+stars|étoiles\s+sur\s+5|su\s+5\s+stelle|de\s+5\s+estrellas)/i;
@@ -584,7 +546,6 @@ function scrapeAmazonLogic() {
         // 在亚马逊上，很多国际评论同步过来时确实是没有标题的
         const isStillDirty = /^\d[.,]\d\s+(?:von|out)/i.test(cleanHeadline);
         if (isStillDirty) {
-          // 如果抓出来还是只有星级，直接标记为无标题，避免显示丑陋的“5,0 von 5...”
           cleanHeadline = "";
         }
 
@@ -622,7 +583,6 @@ function scrapeAmazonLogic() {
           headline: cleanHeadline || "No Title",
           body: cleanBody || "No Content",
           star_rating: (function (parent) {
-            // 兼容你源码中德语逗号格式的解析
             const starEl =
               parent.querySelector('[data-hook*="star-rating"]') ||
               parent.querySelector(".a-icon-star");
@@ -646,21 +606,37 @@ function scrapeAmazonLogic() {
       errorSummary = "未识别到任何描述点";
     }
 
+    // --- 5. 构建最终返回对象 (调整为含 metadata 结构) ---
+    const productsList = [
+      {
+        asin: asin,
+        productTitle: productTitle,
+        feature_bullets: feature_bullets,
+        customer_reviews: customer_reviews,
+        scrape_status: productTitle ? "success" : "failed",
+      },
+    ];
+
     return {
-      products: [
-        {
-          marketplace: marketplace, // <--- 这里是新增的字段
-          asin: asin,
-          productTitle: productTitle,
-          feature_bullets: feature_bullets,
-          customer_reviews: customer_reviews,
-          //"error_summary": errorSummary, // 将摘要传回 popup.js 展示
-          //"error_summary": customer_reviews.some(r => r.headline === "No Title") ? "部分标题缺失" : "",
-          scrape_status: productTitle ? "success" : "failed",
-        },
-      ],
+      metadata: {
+        scrape_timestamp: now,
+        marketplace: marketplace,
+        domain: host,
+        language: language,
+        total_asins: productsList.length
+      },
+      products: productsList,
     };
   } catch (e) {
-    return { products: [{ scrape_status: "failed", error: e.message }] };
+    return { 
+        metadata: {
+            scrape_timestamp: new Date().toISOString(),
+            marketplace: "ERROR",
+            domain: window.location.hostname,
+            language: "Unknown",
+            total_asins: 0
+        },
+        products: [{ scrape_status: "failed", error: e.message }] 
+    };
   }
 }
