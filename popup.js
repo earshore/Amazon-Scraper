@@ -11,6 +11,58 @@ function escapeHtml(unsafe) {
     .replace(/'/g, "&#039;");
 }
 
+document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    if (!tab || !tab.url) return;
+
+    // 1. 获取当前页面的 ASIN 和 Host
+    const urlObj = new URL(tab.url);
+    const currentHost = urlObj.hostname;
+    const asinMatch = tab.url.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/);
+    const currentAsin = asinMatch ? asinMatch[1] : null;
+
+    if (!currentAsin) return; // 非商品页不恢复
+
+    chrome.storage.local.get(["lastScrapedData"], (result) => {
+      if (result.lastScrapedData) {
+        const cachedData = result.lastScrapedData;
+
+        // 2. 校验缓存数据有效性
+        if (cachedData && cachedData.products && cachedData.products.length > 0) {
+          const cachedProduct = cachedData.products[0];
+          const cachedMetadata = cachedData.metadata || {};
+
+          // 3. 关键校验：ASIN 和 域名必须完全一致
+          // 注意：metadata.domain 是之前抓取时的 window.location.hostname
+          if (
+            cachedProduct.asin === currentAsin &&
+            cachedMetadata.domain === currentHost
+          ) {
+            finalData = cachedData;
+            const status = document.getElementById("status");
+            const mdPreview = document.getElementById("mdPreview");
+            const downloadBtn = document.getElementById("downloadBtn");
+
+            status.style.display = "block";
+            status.className = "success";
+            status.innerText = "✅ 上次分析结果 (缓存)";
+            mdPreview.style.display = "block";
+            downloadBtn.style.display = "block";
+            renderPreview(cachedProduct);
+          } else {
+            // 如果不匹配，静默清除旧缓存（可选，或者保留但不显示）
+            // console.log("Cache mismatch: ASIN or Host differs.");
+          }
+        }
+      }
+    });
+  } catch (err) {
+    console.error("Auto-restore failed:", err);
+  }
+});
+
 document.getElementById("scrapeBtn").addEventListener("click", async () => {
   const status = document.getElementById("status");
   const mdPreview = document.getElementById("mdPreview");
@@ -102,6 +154,7 @@ function startScraping(tab) {
       }
 
       finalData = results[0].result;
+      chrome.storage.local.set({ lastScrapedData: finalData });
 
       // 【注意】结构变更兼容：检查 products 数组
       if (!finalData.products || finalData.products.length === 0) {
@@ -211,7 +264,7 @@ function renderPreview(prod) {
   )}</div>
         <div style="font-weight: 700; border-bottom: 2px solid #eee;">About this item</div>
         <ul style="font-size: 13px; padding-left: 20px;">${bulletsHtml}</ul>
-        <div style="font-weight: 700; margin-top:15px; border-bottom: 2px solid #eee;">Reviews</div>
+        <div style="font-weight: 700; margin-top:15px; border-bottom: 2px solid #eee;">Reviews (${prod.customer_reviews.length})</div>
         ${reviewsHtml}
     `;
 }
