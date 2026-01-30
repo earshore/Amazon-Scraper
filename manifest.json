@@ -1,15 +1,19 @@
 {
   "manifest_version": 3,
   "name": "Amazon Scraper",
-  "version": "1.0.0",
-  "description": "Professional review scraper for Amazon.",
+  "version": "1.3.5",
+  "description": "Simple Listing & Reviews Scraper for Amazon",
   "author": "Aihang AI",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["activeTab", "scripting", "storage"],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
   "host_permissions": [
     "https://*.amazon.de/*",
     "https://*.amazon.fr/*",
@@ -24,7 +28,7 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Analyze this product"
+    "default_title": "Scrape this product"
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"

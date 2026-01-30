@@ -108,7 +108,7 @@ function startScraping(tab) {
         showError("解析失败", "未找到商品信息");
         return;
       }
-      
+
       const prod = finalData.products[0];
 
       if (prod.scrape_status === "failed") {
@@ -228,15 +228,16 @@ document.getElementById("downloadBtn").addEventListener("click", () => {
 
   try {
     const product = finalData.products[0];
-    
+
     // 2. 优先使用 metadata 中的时间戳，如果没有则生成新的
     let timestampStr = new Date().getTime();
     if (finalData.metadata && finalData.metadata.scrape_timestamp) {
-        // 将 ISO 时间处理为文件名友好格式 (例如 2026-01-01T12-00-00)
-        timestampStr = finalData.metadata.scrape_timestamp.replace(/[:.]/g, "-").slice(0, 19);
+      // 将 ISO 时间处理为文件名友好格式 (例如 2026-01-01T12-00-00)
+      timestampStr = finalData.metadata.scrape_timestamp.replace(/[:.]/g, "-").slice(0, 19);
     }
 
-    const fileName = `Amz_${product.asin || "Unknown"}_${timestampStr}.json`;
+    const marketplace = finalData.metadata?.marketplace || "Unknown";
+    const fileName = `Amz_${marketplace}_${product.asin || "Unknown"}_${timestampStr}.json`;
 
     const blob = new Blob([JSON.stringify(finalData, null, 2)], {
       type: "application/json",
@@ -340,14 +341,14 @@ function scrapeAmazonLogic() {
     // 2. 新增：Metadata 所需的语言与时间戳
     // ============================================================
     const now = new Date().toISOString();
-    
+
     // 简单的语言映射表
     const langCode = document.documentElement.lang.split('-')[0].toLowerCase();
     const fullLangMap = {
       "de": "German", "en": "English", "fr": "French",
       "it": "Italian", "es": "Spanish", "nl": "Dutch",
-      "pl": "Polish", "sv": "Swedish", "be":"French",
-      "ie":"English","tr": "Turkish", "us":"English",
+      "pl": "Polish", "sv": "Swedish", "be": "French",
+      "ie": "English", "tr": "Turkish", "us": "English",
       "pt": "Portuguese", "ja": "Japanese", "zh": "Chinese"
     };
     // 如果映射不到，首字母大写返回 (例如 "zh" -> "Zh")
@@ -475,7 +476,7 @@ function scrapeAmazonLogic() {
         break;
       }
     }
-    
+
     const extractStars = (parent) => {
       // 1. 定义多重备选选择器（包含国际评论特有的 selector）
       const starSelectors = [
@@ -628,15 +629,15 @@ function scrapeAmazonLogic() {
       products: productsList,
     };
   } catch (e) {
-    return { 
-        metadata: {
-            scrape_timestamp: new Date().toISOString(),
-            marketplace: "ERROR",
-            domain: window.location.hostname,
-            language: "Unknown",
-            total_asins: 0
-        },
-        products: [{ scrape_status: "failed", error: e.message }] 
+    return {
+      metadata: {
+        scrape_timestamp: new Date().toISOString(),
+        marketplace: "ERROR",
+        domain: window.location.hostname,
+        language: "Unknown",
+        total_asins: 0
+      },
+      products: [{ scrape_status: "failed", error: e.message }]
     };
   }
 }
