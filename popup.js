@@ -331,7 +331,9 @@ function scrapeAmazonLogic() {
       bulletPoints: [
         "#feature-bullets ul li .a-list-item", // 经典版最准
         "#productFactsDesktop_feature_div ul li", // 现代版最准
-        ".a-unordered-list.a-vertical li", // 通用备选，不再直接指点到 span
+        ".a-unordered-list.a-vertical.a-spacing-small li span.a-list-item", // 德国站等欧洲站点
+        ".a-unordered-list.a-vertical li span.a-list-item", // 通用备选
+        ".a-unordered-list.a-vertical li", // 最后兜底
       ],
       reviewContainers: [
         '[data-hook="review"]',
@@ -486,23 +488,29 @@ function scrapeAmazonLogic() {
       if (nodes.length > 0) {
         const cleaned = Array.from(nodes)
           .filter((n) => {
-            // 1. 核心改进：必须位于 #feature-bullets 容器内
+            // 1. 扩展容器识别：支持更多欧洲站点的容器结构
             const isInMainFeatureArea =
               n.closest("#feature-bullets") ||
               n.closest("#featurebullets_feature_div") ||
-              n.closest("#productFactsDesktop_feature_div");
-            // 1. 屏蔽详情参数区域
+              n.closest("#productFactsDesktop_feature_div") ||
+              n.closest(".a-expander-content"); // 新增：支持德国站等折叠式容器
+            
+            // 2. 屏蔽详情参数区域
             const isDetails =
               n.closest("#prodDetails") ||
-              n.closest("#productDetails_feature_div");
-            // 2. 屏蔽购物车/侧边栏区域
+              n.closest("#productDetails_feature_div") ||
+              n.closest(".product-facts-detail"); // 新增：屏蔽"Zusätzliche Informationen"等区域
+            
+            // 3. 屏蔽购物车/侧边栏区域
             const isSideBar =
               n.closest("#rightCol") || n.closest("#nav-flyout-ewc");
-            // 3. 屏蔽客户评分分布区域
+            
+            // 4. 屏蔽客户评分分布区域
             const isCusterReview = n.closest(
               "#a-fixed-left-grid-col a-col-left"
             );
-            // 4. 仅保留主内容区
+            
+            // 5. 仅保留主内容区
             return (
               isInMainFeatureArea && !isDetails && !isSideBar && !isCusterReview
             );
