@@ -95,29 +95,33 @@ document.getElementById("scrapeBtn").addEventListener("click", async () => {
     const { lang, host, isAmazon } = checkResults[0].result;
 
     // 定义站点与语言的对应关系
-    const languageMap = {
-      "amazon.de": "de",
-      "amazon.fr": "fr",
-      "amazon.it": "it",
-      "amazon.es": "es",
-      "amazon.nl": "nl",
-      "amazon.pl": "pl",
-      "amazon.se": "sv",
-      "amazon.ie": "en",
-      "amazon.co.uk": "en",
-      "amazon.com": "en",
-    };
+    const languageMap = [
+      { domain: "amazon.com.be", prefixes: ["fr", "nl", "en"] },
+      { domain: "amazon.co.uk", prefixes: ["en"] },
+      { domain: "amazon.ie", prefixes: ["en"] },
+      { domain: "amazon.de", prefixes: ["de", "en"] },
+      { domain: "amazon.fr", prefixes: ["fr", "en"] },
+      { domain: "amazon.it", prefixes: ["it", "en"] },
+      { domain: "amazon.es", prefixes: ["es", "en"] },
+      { domain: "amazon.nl", prefixes: ["nl", "en"] },
+      { domain: "amazon.se", prefixes: ["sv", "en"] },
+      { domain: "amazon.pl", prefixes: ["pl", "en"] },
+      { domain: "amazon.com", prefixes: ["en"] },
+    ];
 
     // 查找当前站点应该使用的语言前缀
-    const expectedLang = Object.keys(languageMap).find((key) =>
-      host.includes(key)
+    const expectedLang = languageMap.find((item) =>
+      host === item.domain || host.endsWith(`.${item.domain}`)
     );
     const currentExpectedPrefix = expectedLang
-      ? languageMap[expectedLang]
+      ? expectedLang.prefixes
       : null;
 
     // 如果语言不匹配（例如在 .de 却不是以 de 开头）
-    if (currentExpectedPrefix && !lang.startsWith(currentExpectedPrefix)) {
+    if (
+      currentExpectedPrefix &&
+      !currentExpectedPrefix.some((prefix) => lang.startsWith(prefix))
+    ) {
       showWarning(
         "语言设置不匹配",
         `检测到您在 <b>${host}</b> 使用了 <b>${lang}</b>。建议切换回本地语言以避免过滤失效。`,
@@ -337,14 +341,21 @@ function scrapeAmazonLogic() {
       ],
       reviewContainers: [
         '[data-hook="review"]',
+        '[data-hook="reviewContainer"]',
         ".review",
         ".a-section.review",
         "#cm_cr-review_list .review",
         ".cr-widget-Reviews .review",
       ],
       reviewBody: [
-        '[data-hook="review-body"] span:not(.cr-original-review-content)',
+        '[data-hook="reviewRichContentContainer"]',
+        '[data-hook="reviewText"] [data-hook="reviewRichContentContainer"]',
+        '[data-hook="reviewTextContainer"] [data-hook="reviewRichContentContainer"]',
+        '[data-hook="review-body"] .cr-original-review-content',
         '[data-hook="review-body"]',
+        '[data-hook="review-body"] span:not(.cr-original-review-content)',
+        '[data-hook="reviewText"]',
+        '[data-hook="reviewTextContainer"]',
         ".review-text-content span",
         ".review-text span",
         ".reviewText",
@@ -353,10 +364,12 @@ function scrapeAmazonLogic() {
         ".cr-original-review-content",
       ],
       reviewTitle: [
-        '[data-hook="review-title"] span:not(.a-letter-space)',
-        'a[data-hook="review-title"] span:not(.a-letter-space)',
+        '[data-hook="reviewTitle"]',
+        '[data-hook="review-title"] .cr-original-review-content',
+        'a[data-hook="review-title"]',
         '[data-hook="review-title"]',
-        ".review-title-content span",
+        ".review-title-content",
+        ".review-title",
       ],
       reviewRating: [
         '[data-hook="review-star-rating"]',
@@ -474,6 +487,43 @@ function scrapeAmazonLogic() {
       return "";
     };
 
+    const getFirstElement = (selectors, parent = document) => {
+      for (const sel of selectors) {
+        const el = parent.querySelector(sel);
+        if (el && el.textContent.trim()) return el;
+      }
+      return null;
+    };
+
+    const cleanElementText = (source, selectorsToRemove = "") => {
+      if (!source) return "";
+      const temp = source.cloneNode(true);
+      if (selectorsToRemove) {
+        temp.querySelectorAll(selectorsToRemove).forEach((n) => n.remove());
+      }
+      return temp.textContent.replace(/\s+/g, " ").trim();
+    };
+
+    const extractOriginCountry = (dateText) => {
+      const countryPatterns = [
+        /Reviewed in (.+?) on /i,
+        /Bewertet in (.+?) am /i,
+        /Comment\S*\s+(?:en|au|aux)\s+(.+?)\s+le\s+/i,
+        /Recensito in (.+?) il /i,
+        /Revisado en (.+?) el /i,
+        /Beoordeeld in (.+?) op /i,
+        /Recenserad i (.+?) den /i,
+        /Zrecenzowano w (.+?) (?:w dniu|dnia) /i,
+      ];
+
+      for (const pattern of countryPatterns) {
+        const match = dateText.match(pattern);
+        if (match) return match[1].replace(/\s+/g, " ").trim();
+      }
+
+      return "Global";
+    };
+
     // 4.1 基本信息
     const productTitle = getFirstValidText(config.productTitle);
     const asin =
@@ -578,35 +628,27 @@ function scrapeAmazonLogic() {
       .map((el) => {
         // 1. 获取原始标题 (关闭黑名单，确保拿到原始字符串)
         // 1. 获取标题节点
-        const titleEl =
-          el.querySelector('[data-hook="review-title"]') ||
-          el.querySelector(".review-title-content") ||
-          el.querySelector('a[data-hook="review-title"]');
+        const titleEl = getFirstElement(config.reviewTitle, el);
         // 2. 强力清洗逻辑
         let cleanHeadline = "";
         if (titleEl) {
           // 【关键修复】：不直接使用 innerText，而是克隆节点并移除掉其中的星级 span
-          const tempTitle = titleEl.cloneNode(true);
           // 移除星级干扰和可能的翻译占位符
-          const noise = tempTitle.querySelectorAll(
-            ".a-icon-alt, .cr-translated-review-content, i"
+          cleanHeadline = cleanElementText(
+            titleEl,
+            ".a-icon-alt, .a-letter-space, .cr-translated-review-content, [data-hook*=\"star-rating\"], i"
           );
-          noise.forEach((n) => n.remove());
-          cleanHeadline = tempTitle.textContent.replace(/\s+/g, " ").trim();
         }
         // --- 2. 正文抓取逻辑 (核心优化点) ---
-        const bodyContainer =
-          el.querySelector('[data-hook="review-body"]') ||
-          el.querySelector(".reviewText") ||
-          el.querySelector(".review-text-content");
+        const bodyContainer = getFirstElement(config.reviewBody, el);
 
         // 2. 强力清洗（双保险）：如果克隆方案没去干净，再跑一次正则
         const globalStarRegex =
-          /^\d[.,]\d\s+(?:von\s+5\s+Sternen|out\s+of\s+5\s+stars|étoiles\s+sur\s+5|su\s+5\s+stelle|de\s+5\s+estrellas)/i;
+          /^\d(?:[.,]\d)?\s+(?:von\s+5\s+Sternen|out\s+of\s+5\s+stars|\S+\s+sur\s+5|su\s+5\s+stelle|de\s+5\s+estrellas|van\s+5\s+sterren|av\s+5\s+\S+|na\s+5\s+\S+)/i;
         cleanHeadline = cleanHeadline.replace(globalStarRegex, "").trim();
 
         // 在亚马逊上，很多国际评论同步过来时确实是没有标题的
-        const isStillDirty = /^\d[.,]\d\s+(?:von|out)/i.test(cleanHeadline);
+        const isStillDirty = /^\d(?:[.,]\d)?\s+(?:von|out|sur|su|de|van|av|na)/i.test(cleanHeadline);
         if (isStillDirty) {
           cleanHeadline = "";
         }
@@ -614,16 +656,22 @@ function scrapeAmazonLogic() {
         let cleanBody = "";
         if (bodyContainer) {
           // 优先寻找原文内容 span (针对国际评论)
-          const originalContent = bodyContainer.querySelector(
-            ".cr-original-review-content"
-          );
+          const originalContent =
+            bodyContainer.matches(".cr-original-review-content")
+              ? bodyContainer
+              : bodyContainer.querySelector(".cr-original-review-content");
           if (originalContent) {
-            cleanBody = originalContent.textContent.trim();
+            cleanBody = cleanElementText(originalContent);
           } else {
             // 如果不是国际评论，则取容器内的文本，但要避开脚本和样式
-            const tempBody = bodyContainer.cloneNode(true);
+            const richContent =
+              bodyContainer.matches('[data-hook="reviewRichContentContainer"]')
+                ? bodyContainer
+                : bodyContainer.querySelector('[data-hook="reviewRichContentContainer"]');
+            const bodySource = richContent || bodyContainer;
+            const tempBody = bodySource.cloneNode(true);
             const scripts = tempBody.querySelectorAll(
-              "script, style, .a-expander-header"
+              "script, style, noscript, .a-hidden, .a-expander-header, .a-expander-prompt, .a-expander-partial-collapse-header, .a-cardui-expand-control-footer, [data-hook=\"reviewExpandButtonContainer\"], [data-hook=\"translationSpinner\"]"
             );
             scripts.forEach((s) => s.remove());
             cleanBody = tempBody.textContent.trim();
@@ -634,12 +682,16 @@ function scrapeAmazonLogic() {
 
         // 4. 获取日期和国家
         // --- 3. 日期与国家 ---
-        const dateText =
-          el.querySelector('[data-hook="review-date"]')?.innerText || "";
+        const dateEl = getFirstElement(
+          ['[data-hook="review-date"]', '[data-hook="reviewDate"]'],
+          el
+        );
+        const dateText = dateEl ? cleanElementText(dateEl) : "";
         // 增强版国家提取：兼容 Reseñado en el Reino Unido (西班牙语等)
         const countryMatch = dateText.match(
           /(?:in|aus|en|il|em|nel|su|von|från|z|u|en\sel)\s+(.+?)\s+(?:on|am|le|il|el|au|al|del|den|dnia|på|op|el)\s+\d/i
         );
+        const parsedOriginCountry = extractOriginCountry(dateText);
 
         return {
           headline: cleanHeadline || "No Title",
@@ -654,11 +706,15 @@ function scrapeAmazonLogic() {
             return m ? parseFloat(m[0].replace(",", ".")) : 0;
           })(el),
           review_date: dateText,
-          origin_country: countryMatch ? countryMatch[1].trim() : "Global",
+          origin_country:
+            parsedOriginCountry !== "Global"
+              ? parsedOriginCountry
+              : countryMatch
+              ? countryMatch[1].trim()
+              : "Global",
         };
       })
-      .filter((r) => r.body.length > 5)
-      .slice(0, 10);
+      .filter((r) => r.body.length > 5);
 
     // 检查数量是否异常
     let errorSummary = "";
