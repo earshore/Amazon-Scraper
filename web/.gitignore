@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+*.log
+
+# Build artifacts emitted by `tsc -b` (runtime uses .ts via tsx; do not commit)
+*.tsbuildinfo
+*.d.ts
+server/*.js
+vite.config.js

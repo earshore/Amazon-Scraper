@@ -1,0 +1,37 @@
+{
+  "name": "amazon-scraper-web",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Install-free Agent Web app that scrapes Amazon product data by ASIN and exports JSON. Built on the codebuddy-chat-web skill stack (React + Vite + Express + Tailwind).",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "tsx watch server/index.ts",
+    "dev:client": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "server": "tsx server/index.ts"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
+    "lucide-react": "^0.563.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "undici": "^6.19.8"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.0",
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^8.2.2",
+    "postcss": "^8.5.0",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.6.2",
+    "typescript": "^5.3.2",
+    "vite": "^8.1.5"
+  }
+}
