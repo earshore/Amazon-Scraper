@@ -125,7 +125,7 @@ The extension uses `chrome.storage.local` to cache the last **successful or part
 
 - `lastScrapedData`
 
-Failed scrapes are **not** cached. Cache is keyed for restore by ASIN + domain. You can clear it via the in-popup **Clear local cache** control, browser extension storage wipe, or uninstall.
+Failed scrapes are **not** cached. Cache is keyed for restore by ASIN + domain. Running **Re-analyze** on the same product overwrites `lastScrapedData`. You can also clear data via browser extension storage wipe or uninstall.
 
 ### 5. User export
 
