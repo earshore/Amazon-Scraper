@@ -1,6 +1,12 @@
-# 导出 Schema 说明（schema_version 1.2.0）
+﻿# 导出 Schema 说明（schema_version 1.3.0）
 
-本文档描述 **Amazon Product Insight** 扩展导出的 JSON 数据结构。当前 schema 版本为 **`1.2.0`**（扩展版本 **`1.5.0`**）。
+本文档描述 **Amazon Product Insight** 扩展导出的 JSON 数据结构。
+
+| 项目 | 值 |
+|------|-----|
+| 扩展版本 | **`1.6.1`** |
+| Schema 版本 | **`1.3.0`** |
+| 抓取引擎 | `scraper/core.js`（`SCHEMA_VERSION` / `scrapeAmazonPage`） |
 
 ---
 
@@ -11,46 +17,61 @@
 - `metadata`：本次抓取的元信息（站点、时间、语言、schema 版本、评论范围等）
 - `products`：商品数组（当前实现通常仅包含 **1** 个商品，即当前详情页）
 
-导出 / 复制 JSON 即对该对象做 `JSON.stringify(..., null, 2)`。
+导出 JSON 即对该对象做 `JSON.stringify(..., null, 2)`。
+
+商品对象通过三层诊断列表描述数据质量：
+
+| 数组 | 含义 | 对 `scrape_status` 的影响 |
+|------|------|---------------------------|
+| `errors[]` | 硬失败 | 非空 → **`failed`** |
+| `warnings[]` | 质量问题 | 有标题且非空 → **`partial`** |
+| `notes[]` | 信息性说明 | **不**单独强制 `partial`；可与 **`success`** 并存 |
 
 ---
 
-## 完整示例
+## 完整示例（`success`）
 
-下列示例对应一次 **`scrape_status: "success"`** 的结果：标题、ASIN、价格、品牌、主图齐全，描述点不少于 3 条，且页面可见评论至少 1 条，因此 `warnings` 为空数组。
+下列示例对应一次 **`scrape_status: "success"`** 的结果：标题、ASIN、价格、品牌、主图齐全，描述点不少于 3 条，且页面可见评论至少 1 条。因此 `errors` / `warnings` / `notes` 均为空数组。
 
 ```json
 {
   "metadata": {
-    "schema_version": "1.2.0",
+    "schema_version": "1.3.0",
     "scrape_timestamp": "2026-07-17T12:34:56.789Z",
-    "marketplace": "DE",
-    "domain": "www.amazon.de",
-    "language": "German",
+    "marketplace": "US",
+    "domain": "www.amazon.com",
+    "language": "English",
     "total_asins": 1,
     "reviews_scope": "visible_dom_only"
   },
   "products": [
     {
-      "asin": "B0XXXXXXXX",
-      "productTitle": "示例商品标题",
-      "price": "29,99 €",
+      "asin": "B08N5WRWNW",
+      "productTitle": "Example Wireless Headphones with Noise Cancellation",
+      "price": "$19.99",
       "brand": "ExampleBrand",
       "main_image": "https://m.media-amazon.com/images/I/example.jpg",
       "feature_bullets": [
-        "卖点一",
-        "卖点二",
-        "卖点三",
-        "卖点四",
-        "卖点五"
+        "Active noise cancellation for focused listening",
+        "Up to 30 hours of battery life",
+        "Bluetooth 5.0 multipoint connection",
+        "Lightweight over-ear design",
+        "Built-in microphone for calls"
       ],
       "customer_reviews": [
         {
-          "headline": "评论标题",
-          "body": "评论正文……",
-          "star_rating": 4.0,
-          "review_date": "Bewertet in Deutschland am 1. Januar 2026",
-          "origin_country": "Deutschland"
+          "headline": "Great value",
+          "body": "Sound is clear and battery lasts all day…",
+          "star_rating": 5,
+          "review_date": "Reviewed in the United States on January 1, 2026",
+          "origin_country": "United States"
+        },
+        {
+          "headline": "Comfortable fit",
+          "body": "Wore them for hours with no pressure…",
+          "star_rating": 4,
+          "review_date": "Reviewed in the United States on December 15, 2025",
+          "origin_country": "United States"
         }
       ],
       "scrape_status": "success",
@@ -61,15 +82,72 @@
         "has_brand": true,
         "has_main_image": true,
         "bullet_count": 5,
-        "review_count": 1
+        "review_count": 2
       },
-      "warnings": []
+      "errors": [],
+      "warnings": [],
+      "notes": [],
+      "_debug": {
+        "bullets_selector": "#feature-bullets ul li span.a-list-item",
+        "reviews_selector": "[data-hook=\"review\"]"
+      }
     }
   ]
 }
 ```
 
-> 说明：当 `scrape_status` 为 `partial` 时，`warnings` 通常非空；为 `failed` 时可能出现 `error` 字段，且部分商品字段可能缺失或为空。
+> 说明：`_debug` 为可选调试字段（命中的选择器），下游工具可忽略。当 `scrape_status` 为 `partial` 时，`warnings` 通常非空；为 `failed` 时 `errors` 非空，部分商品字段可能为空。
+
+### 示例：`success` + `notes`（仅缺可见评论）
+
+有标题、无质量警告，但当前页无可见评论时，状态仍为 **`success`**，评论缺失写入 **`notes`**（**不**进入 `warnings`）：
+
+```json
+{
+  "scrape_status": "success",
+  "customer_reviews": [],
+  "coverage": { "review_count": 0 },
+  "errors": [],
+  "warnings": [],
+  "notes": [
+    "当前页未识别到可见评论（仅抓取 DOM 可见部分，新品或折叠区常见）"
+  ]
+}
+```
+
+### 示例：`partial`（质量警告）
+
+有标题，但描述点缺失或过少、或 ASIN 未知时：
+
+```json
+{
+  "scrape_status": "partial",
+  "errors": [],
+  "warnings": [
+    "未识别到任何描述点（可能漏抓或页面无卖点区）"
+  ],
+  "notes": [
+    "未识别到价格（页面可能无公开价或布局未覆盖）",
+    "当前页未识别到可见评论（仅抓取 DOM 可见部分，新品或折叠区常见）"
+  ]
+}
+```
+
+### 示例：`failed`（硬失败）
+
+无标题时：
+
+```json
+{
+  "scrape_status": "failed",
+  "productTitle": "",
+  "errors": ["未识别到商品标题（硬失败）"],
+  "warnings": [],
+  "notes": []
+}
+```
+
+异常路径（脚本抛错）时，`metadata.marketplace` 可能为 `"ERROR"`，`errors` 含异常 `message`，`total_asins` 可为 `0`。
 
 ---
 
@@ -79,7 +157,7 @@
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `schema_version` | string | 是 | 固定为 `"1.2.0"`（本版本） |
+| `schema_version` | string | 是 | 固定为 `"1.3.0"`（本版本） |
 | `scrape_timestamp` | string | 是 | ISO-8601 时间戳（`Date.toISOString()`），UTC |
 | `marketplace` | string | 是 | 站点代码，见下表 |
 | `domain` | string | 是 | 当前页 hostname，如 `www.amazon.de` |
@@ -119,8 +197,8 @@
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `asin` | string | 条件 | 优先取 `#ASIN` 表单值，否则从 URL `/dp/` 或 `/gp/product/` 解析；失败时为 `"UNKNOWN"`。异常失败对象中可能缺失 |
-| `productTitle` | string | 条件 | 商品标题；失败时可能为空字符串或缺失 |
+| `asin` | string | 条件 | 优先取 `#ASIN` 表单值，否则从 URL `/dp/` 或 `/gp/product/` 解析；失败时为 `"UNKNOWN"` |
+| `productTitle` | string | 条件 | 商品标题；失败时可能为空字符串 |
 | `price` | string | 条件 | 页面可见价格原文（如 `"29,99 €"`、`"$19.99"`）；未识别时为空字符串 `""` |
 | `brand` | string | 条件 | 品牌名（由 byline / brand 链接等解析并清洗）；未识别时为空字符串 `""` |
 | `main_image` | string | 条件 | 主图 URL；未识别时为空字符串 `""` |
@@ -128,10 +206,12 @@
 | `customer_reviews` | object[] | 是* | 当前页 DOM 可见评论；无结果时为 `[]` |
 | `scrape_status` | string | 是 | `success` \| `partial` \| `failed` |
 | `coverage` | object | 是* | 覆盖率摘要，见下表 |
-| `warnings` | string[] | 是* | 人类可读中文警告；无警告时为 `[]` |
-| `error` | string | 否 | 通常仅在 `failed`（异常路径）时出现，为异常 `message` |
+| `errors` | string[] | 是* | 硬失败原因；无错误时为 `[]` |
+| `warnings` | string[] | 是* | 质量警告（会驱动 `partial`）；无警告时为 `[]` |
+| `notes` | string[] | 是* | 信息性说明（**不**驱动 `partial`）；无说明时为 `[]` |
+| `_debug` | object | 否 | 调试信息：`bullets_selector`、`reviews_selector`（命中选择器或 `null`） |
 
-\* 正常解析路径均会写入；异常失败回退结构也会尽量补全 `coverage`、`warnings`、`price`、`brand`、`main_image`、`feature_bullets`、`customer_reviews` 等字段。
+\* 正常解析路径均会写入；异常失败回退结构也会尽量补全 `coverage`、`errors`、`warnings`、`notes` 及商品字段。
 
 #### `coverage`
 
@@ -159,73 +239,98 @@
 
 ---
 
-## `scrape_status` 语义
+## `scrape_status` 语义（关键）
 
-判定顺序如下（与 `popup.js` 中 `scrapeAmazonLogic` 一致）：
+判定顺序（与 `scraper/core.js` 一致）：
 
 | 状态 | 条件 | 典型表现 |
 |------|------|----------|
-| `failed` | 未识别到商品标题（`productTitle` 为空），或整段抓取逻辑抛出异常 | 弹窗显示错误，不展示导出/复制按钮（正常失败路径）；异常路径 `marketplace` 可能为 `ERROR`，并带 `error` / 警告 |
-| `partial` | 标题存在，且 `warnings.length > 0` | 弹窗显示「部分成功」、覆盖率 chips 与警告列表；**仍可导出 / 复制** |
-| `success` | 标题存在，且无警告 | 弹窗显示分析完成；可导出 / 复制 |
+| `failed` | `errors.length > 0`，或无商品标题；或整段抓取逻辑抛出异常 | 弹窗显示失败；正常失败路径下 **导出 JSON** 不可用；异常路径 `marketplace` 可能为 `ERROR` |
+| `partial` | 有标题，且 `warnings.length > 0` | 弹窗显示「部分成功」、覆盖率 chips、「需要关注」警告列表；**仍可导出 JSON** |
+| `success` | 有标题，且 `warnings` 为空（**`notes` 可非空**） | 弹窗显示分析完成；可导出 JSON；可展示「说明」notes |
 
-### 何时产生警告（`warnings`）
+公式摘要：
 
-当前实现可能推送的中文警告包括（不限于、文案以代码为准）：
+```text
+failed  ← 无标题 / errors 非空 / 顶层异常
+partial ← 有标题 且 warnings 非空
+success ← 有标题 且 warnings 为空（notes 不影响）
+```
 
-| 场景 | 警告含义（摘要） |
-|------|------------------|
-| 无标题 | 未识别到商品标题（同时会将状态置为 `failed`） |
-| ASIN 未知 | 未识别到 ASIN |
-| 无价格 | 未识别到价格 |
-| 无品牌 | 未识别到品牌 |
-| 无主图 | 未识别到主图 |
-| 无描述点 | 未识别到任何描述点 |
-| 描述点过少 | 描述点少于 3 条，可能存在漏抓 |
-| 无评论 | 当前页未识别到评论（仅抓取页面可见评论） |
-| 运行时异常 | 抓取过程发生异常: … |
+---
+
+## `errors` / `warnings` / `notes` 对照表
+
+### `errors[]`（硬失败 → `failed`）
+
+| 场景 | 典型文案（以代码为准） |
+|------|------------------------|
+| 无商品标题 | `未识别到商品标题（硬失败）` |
+| 运行时异常 | 异常 `message`（写入失败回退结构的 `errors`） |
+
+### `warnings[]`（质量问题 → `partial`）
+
+| 场景 | 典型文案（以代码为准） |
+|------|------------------------|
+| ASIN 未知 | `未识别到 ASIN` |
+| 无描述点 | `未识别到任何描述点（可能漏抓或页面无卖点区）` |
+| 描述点过少（&lt; 3） | `描述点偏少（N 条），可能存在漏抓` |
+
+### `notes[]`（信息性 → **不**强制 `partial`）
+
+| 场景 | 典型文案（以代码为准） |
+|------|------------------------|
+| 无价格 | `未识别到价格（页面可能无公开价或布局未覆盖）` |
+| 无品牌 | `未识别到品牌` |
+| 无主图 | `未识别到主图` |
+| 无可见评论 | `当前页未识别到可见评论（仅抓取 DOM 可见部分，新品或折叠区常见）` |
 
 因此：
 
-- **有标题 + 任意一条上述数据类警告** → `partial`
-- **有标题 + 警告列表为空** → `success`
-- **无标题** → `failed`（即便 `warnings` 中也有「未识别到商品标题」）
+- **有标题 + 任意一条 `warnings`** → `partial`（即使同时有 `notes`）
+- **有标题 + 仅有 `notes`（`warnings` 为空）** → `success`
+- **无标题** → `failed`（`errors` 含硬失败说明）
+
+> 与 schema **1.2.0** 的差异：缺价格 / 品牌 / 主图 / 可见评论在 **1.3.0** 中归入 **`notes`**，不再因这些项单独判为 `partial`。
 
 ---
 
 ## 兼容性说明
 
-### 旧版缓存（无 `price` / `brand` / `main_image` / 扩展 `coverage`）
+### 旧版缓存
 
 扩展使用 `chrome.storage.local` 键 `lastScrapedData` 缓存最近一次结果。打开弹窗时，若当前 URL 的 **ASIN + hostname** 与缓存一致，会恢复预览与导出。
 
 兼容行为：
 
-- 预览函数对 `prod.coverage || {}`、`prod.warnings || []` 做了兜底。
-- **缺少新字段的旧缓存仍可预览**；覆盖率 chips 会按空对象/数组长度回退显示。
-- 缺少 `warnings` 时按无警告处理；若 `scrape_status` 也不是 `partial`，状态区可能显示「上次分析结果 (缓存)」。
-- `metadata.reviews_scope` 在展示层对旧数据有默认回退：`metadata.reviews_scope || "visible_dom_only"`。
+- 预览对 `prod.coverage || {}`、`prod.warnings || []`、`prod.notes || []`、`prod.errors || []` 做兜底。
+- 缺少 `notes` / `errors` 的旧缓存仍可预览；覆盖率 chips 按空对象/数组长度回退。
+- 旧数据可能仍带已废弃的单数字段 `error`（字符串）；UI 在 `errors` 为空时会回退读取 `prod.error`。
+- `metadata.reviews_scope` 展示层默认回退：`metadata.reviews_scope || "visible_dom_only"`。
 
-下游工具若依赖 `price` / `brand` / `main_image`、扩展后的 `coverage.has_*` 或 `reviews_scope`，应检测字段是否存在，或要求用户使用扩展 **重新分析** 以生成 1.2.0 完整结构。
+下游工具若依赖 `errors` / `notes` 分层或 1.3.0 状态语义，应要求用户 **重新分析** 以生成完整结构。
 
 ### 与旧 schema 的关系
 
-- `1.1.0` 在商品对象上明确了 `scrape_status`、`coverage`、`warnings`（及失败时的 `error`），当时 `coverage` 仅含 `has_title`、`has_asin`、`bullet_count`、`review_count`。
-- `1.2.0` 增加：
-  - 商品字段 `price`、`brand`、`main_image`
-  - `coverage.has_price`、`coverage.has_brand`、`coverage.has_main_image`
-  - `metadata.reviews_scope`
-- `metadata.schema_version` 应作为消费方的版本开关；未知版本建议宽松解析 + 人工校验。
+| 版本 | 主要变化 |
+|------|----------|
+| `1.1.0` | 商品对象明确 `scrape_status`、`coverage`、`warnings`（及失败时的 `error`）；`coverage` 仅含 `has_title`、`has_asin`、`bullet_count`、`review_count` |
+| `1.2.0` | 增加 `price` / `brand` / `main_image` 与对应 `coverage.has_*`；增加 `metadata.reviews_scope`；缺字段多写入 `warnings` 并驱动 `partial` |
+| **`1.3.0`** | 引入 `errors[]` / `warnings[]` / `notes[]` 三层诊断；状态语义改为仅 `errors`/`无标题` → failed、仅 `warnings` → partial、`notes` 不强制 partial；可选 `_debug`；抓取逻辑抽离至 `scraper/core.js` |
+
+`metadata.schema_version` 应作为消费方的版本开关；未知版本建议宽松解析 + 人工校验。
 
 ### 消费方建议
 
 1. 先读 `metadata.schema_version` 与 `products[0].scrape_status`。
-2. `failed` 时勿当作完整商品；优先读 `error` / `warnings`。
-3. `partial` 时按 `coverage` 与 `warnings` 决定是否可用（例如无价格时仍可用标题与卖点）。
-4. 不要假设 `customer_reviews` 是全量评论；以 `reviews_scope` 为准。
-5. `review_date` 为页面原文，多语言格式不一，勿直接当 ISO 日期解析。
-6. `price` 为展示原文，**不是**统一数值类型；货币符号与小数分隔符随站点语言变化。
-7. `main_image` 可能为 CDN URL；勿假设长期可访问或固定尺寸。
+2. `failed` 时勿当作完整商品；优先读 `errors`（兼容时可回退 `error`）。
+3. `partial` 时按 `coverage` 与 `warnings` 决定是否可用；同时可参考 `notes`。
+4. `success` 时仍可能有 `notes`（例如无可见评论）；勿假设 `notes` 为空。
+5. 不要假设 `customer_reviews` 是全量评论；以 `reviews_scope` 为准。
+6. `review_date` 为页面原文，多语言格式不一，勿直接当 ISO 日期解析。
+7. `price` 为展示原文，**不是**统一数值类型；货币符号与小数分隔符随站点语言变化。
+8. `main_image` 可能为 CDN URL；勿假设长期可访问或固定尺寸。
+9. `_debug` 仅供排查选择器，勿作为业务契约字段。
 
 ---
 

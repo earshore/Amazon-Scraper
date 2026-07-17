@@ -1,5 +1,5 @@
 /**
- * Offline verification for Amazon Product Insight packaging & pure helpers.
+ * Packaging + consistency verification for Amazon Product Insight.
  * Run: node scripts/verify.mjs
  */
 import fs from "fs";
@@ -22,11 +22,11 @@ function assert(cond, msg) {
   }
 }
 
-// --- package files ---
 const requiredFiles = [
   "manifest.json",
   "popup.html",
   "popup.js",
+  "scraper/core.js",
   "icons/icon16.png",
   "icons/icon48.png",
   "icons/icon128.png",
@@ -35,6 +35,13 @@ const requiredFiles = [
   "LICENSE",
   "CHANGELOG.md",
   "docs/SCHEMA.md",
+  "docs/QA-CHECKLIST.md",
+  "package.json",
+  "test/scraper.test.mjs",
+  "test/fixtures/us-full.html",
+  "test/fixtures/de-partial-no-reviews.html",
+  "test/fixtures/minimal-title-only.html",
+  "test/fixtures/no-title.html",
   ".gitignore",
 ];
 
@@ -44,90 +51,66 @@ for (const f of requiredFiles) {
 
 assert(!fs.existsSync(path.join(root, "content.js")), "content.js removed");
 
-// --- manifest ---
 const manifest = JSON.parse(
   fs.readFileSync(path.join(root, "manifest.json"), "utf8")
 );
-assert(manifest.name === "Amazon Product Insight", "manifest name branding");
-assert(manifest.version === "1.5.0", "manifest version 1.5.0");
-assert(
-  !/scraper/i.test(manifest.name),
-  "manifest name avoids Scraper brand"
-);
-assert(
-  manifest.action?.default_title === "Analyze this product",
-  "toolbar title"
-);
-assert(
-  Array.isArray(manifest.permissions) &&
-    manifest.permissions.includes("activeTab") &&
-    manifest.permissions.includes("scripting") &&
-    manifest.permissions.includes("storage"),
-  "core permissions"
-);
+assert(manifest.name === "Amazon Product Insight", "manifest name");
+assert(manifest.version === "1.6.1", "manifest version 1.6.1");
+assert(!/scraper/i.test(manifest.name), "name avoids Scraper");
+assert(manifest.action?.default_title === "分析此商品", "toolbar title zh");
 
-// --- popup sources ---
+const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+assert(pkg.version === "1.6.1", "package.json version aligned");
+
+const core = require(path.join(root, "scraper", "core.js"));
+assert(core.SCHEMA_VERSION === "1.3.0", "core SCHEMA_VERSION 1.3.0");
+assert(core.REVIEWS_SCOPE === "visible_dom_only", "core reviews scope");
+assert(typeof core.scrapeAmazonPage === "function", "scrapeAmazonPage export");
+
 const popupJs = fs.readFileSync(path.join(root, "popup.js"), "utf8");
 const popupHtml = fs.readFileSync(path.join(root, "popup.html"), "utf8");
+const coreJs = fs.readFileSync(path.join(root, "scraper", "core.js"), "utf8");
 
-assert(popupHtml.includes("Amazon Product Insight"), "popup title branding");
-assert(popupHtml.includes('id="pageHint"'), "page hint UI");
-assert(popupHtml.includes('id="copyJsonBtn"'), "copy JSON button");
-assert(!popupHtml.includes("downloadMdBtn"), "no MD export button");
+assert(popupHtml.includes("Amazon Product Insight"), "popup branding");
+assert(popupHtml.includes('id="pageHint"'), "page hint");
+assert(!popupHtml.includes("copyJsonBtn"), "no copy JSON button");
+assert(popupHtml.includes('id="clearCacheBtn"'), "clear cache");
+assert(!popupHtml.includes("downloadMdBtn"), "no MD export");
 assert(!popupJs.includes("toMarkdown"), "no toMarkdown");
-assert(popupJs.includes("reviews_scope"), "reviews_scope in scrape");
-assert(popupJs.includes("visible_dom_only"), "visible_dom_only scope");
-assert(popupJs.includes('SCHEMA_VERSION = "1.2.0"'), "schema 1.2.0");
-assert(popupJs.includes("main_image"), "main_image field");
-assert(popupJs.includes("has_price"), "coverage has_price");
-assert(popupJs.includes("updatePageHint"), "empty-state helper");
+assert(!popupJs.includes("clipboard"), "no clipboard copy path");
+assert(!popupJs.includes("function scrapeAmazonLogic"), "scrape extracted from popup");
+assert(popupJs.includes('files: ["scraper/core.js"]'), "injects scraper file");
+assert(popupJs.includes("scrapeAmazonPage"), "calls scrapeAmazonPage");
+assert(coreJs.includes("notes"), "core has notes");
+assert(coreJs.includes("warnings"), "core has warnings");
+assert(coreJs.includes("errors"), "core has errors");
 
-// syntax check popup.js in a sandbox without running chrome APIs
 try {
   new vm.Script(popupJs, { filename: "popup.js" });
-  assert(true, "popup.js parses as JS");
+  assert(true, "popup.js parses");
 } catch (e) {
   assert(false, `popup.js parse: ${e.message}`);
 }
+try {
+  new vm.Script(coreJs, { filename: "scraper/core.js" });
+  assert(true, "scraper/core.js parses");
+} catch (e) {
+  assert(false, `core.js parse: ${e.message}`);
+}
 
-// pure helper behavior: extractAsinFromUrl via Function eval of isolated copy
-const extractAsinFromUrl = (url) => {
-  if (!url) return null;
-  const m = String(url).match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i);
-  return m ? m[1].toUpperCase() : null;
-};
-
-assert(
-  extractAsinFromUrl("https://www.amazon.de/dp/B08N5WRWNW") === "B08N5WRWNW",
-  "ASIN from /dp/"
-);
-assert(
-  extractAsinFromUrl(
-    "https://www.amazon.com/gp/product/B0TESTASI0/ref=xx"
-  ) === "B0TESTASI0",
-  "ASIN from /gp/product/"
-);
-assert(
-  extractAsinFromUrl("https://www.amazon.de/s?k=phone") === null,
-  "no ASIN on search"
-);
-
-// docs mention version
 const readme = fs.readFileSync(path.join(root, "README.md"), "utf8");
 const schema = fs.readFileSync(path.join(root, "docs/SCHEMA.md"), "utf8");
-const privacy = fs.existsSync(path.join(root, "PRIVACY.md"))
-  ? fs.readFileSync(path.join(root, "PRIVACY.md"), "utf8")
-  : "";
+const changelog = fs.readFileSync(path.join(root, "CHANGELOG.md"), "utf8");
+const qa = fs.readFileSync(path.join(root, "docs/QA-CHECKLIST.md"), "utf8");
 
-assert(/1\.5\.0/.test(readme), "README mentions 1.5.0");
-assert(/Amazon Product Insight/.test(readme), "README branding");
-assert(!/导出 MD|复制 MD|toMarkdown/.test(readme), "README no MD export");
-assert(/1\.2\.0/.test(schema), "SCHEMA 1.2.0");
-assert(/reviews_scope/.test(schema), "SCHEMA reviews_scope");
-assert(/main_image|price|brand/.test(schema), "SCHEMA new product fields");
-if (privacy) {
-  assert(/本地|local/i.test(privacy), "PRIVACY local processing");
-}
+assert(/1\.6\.1/.test(readme), "README 1.6.1");
+assert(/1\.3\.0/.test(readme), "README schema 1.3.0");
+assert(/scraper\/core\.js|scraper\\core\.js|scraper\//.test(readme), "README architecture");
+assert(!/复制 JSON/.test(readme), "README no copy JSON");
+assert(/1\.3\.0/.test(schema), "SCHEMA 1.3.0");
+assert(/notes/.test(schema) && /warnings/.test(schema) && /errors/.test(schema), "SCHEMA status fields");
+assert(/1\.6\.1/.test(changelog), "CHANGELOG 1.6.1");
+assert(/1\.6\./.test(qa), "QA checklist version");
 
 console.log("\n---");
 if (failed) {

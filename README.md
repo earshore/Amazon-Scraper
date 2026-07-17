@@ -1,13 +1,28 @@
-# Amazon Product Insight
+﻿# Amazon Product Insight
 
-基于 Manifest V3 的 Chrome 扩展。打开亚马逊**商品详情页**后，一键在本地解析当前页面上的商品信息（标题、ASIN、价格、品牌、主图、卖点描述、页面可见评论等），并导出或复制为 JSON，便于个人研究、文案整理或下游分析。
+基于 Manifest V3 的 Chrome 扩展。打开亚马逊**商品详情页**后，一键在本地解析当前页面上的商品信息（标题、ASIN、价格、品牌、主图、卖点描述、页面可见评论等），并导出为 JSON，便于个人研究、文案整理或下游分析。
 
 - **扩展名称**：Amazon Product Insight
-- **当前版本**：`1.5.0`
-- **导出 schema**：`1.2.0`（详见 [docs/SCHEMA.md](docs/SCHEMA.md)）
-- **工具栏标题**：Analyze this product
+- **当前版本**：`1.6.1`
+- **导出 schema**：`1.3.0`（详见 [docs/SCHEMA.md](docs/SCHEMA.md)）
+- **工具栏标题**：分析此商品
+- **UI 语言**：中文
 
 本工具仅在**本地浏览器**中解析当前标签页 DOM，不上传页面内容，也不是批量爬虫。隐私说明见 [PRIVACY.md](PRIVACY.md)。
+
+---
+
+## 架构
+
+| 模块 | 职责 |
+|------|------|
+| [`scraper/core.js`](scraper/core.js) | 可注入的抓取引擎（`scrapeAmazonPage`）；扩展注入页面执行，也可在 Node 测试中 `require` |
+| [`popup.js`](popup.js) / [`popup.html`](popup.html) | **仅 UI**：页面提示、注入核心脚本、预览、导出 JSON、缓存 |
+| [`test/fixtures/`](test/fixtures) + `npm test` | jsdom 夹具测试，锁定状态语义与字段解析 |
+| [`docs/QA-CHECKLIST.md`](docs/QA-CHECKLIST.md) | 手工发版 QA 清单 |
+| [`scripts/verify.mjs`](scripts/verify.mjs) | 打包一致性校验（版本号、架构、文档关键字等） |
+
+抓取逻辑**不再**内联在 `popup.js` 中：弹窗通过 `chrome.scripting.executeScript` 以 `files: ["scraper/core.js"]` 注入，再调用全局 `scrapeAmazonPage`。
 
 ---
 
@@ -16,32 +31,71 @@
 - **页面状态提示（page hint）**  
   - 非亚马逊页面 / 非商品详情页 / `chrome://`、`edge://`、`about:` 等受限页：禁用「分析此页面」并给出提示  
   - 商品详情页：显示「已就绪」及站点 hostname 与 ASIN
-- **一键分析当前商品页**：注入脚本读取当前页 DOM
+- **一键分析当前商品页**：注入 `scraper/core.js` 读取当前页 DOM
 - **解析字段**：`productTitle`、`asin`、`price`、`brand`、`main_image`、`feature_bullets`、`customer_reviews`
 - **抓取状态与覆盖率**  
-  - `scrape_status`：`success` | `partial` | `failed`  
+  - `scrape_status`：`success` \| `partial` \| `failed`  
   - `coverage`：`has_title`、`has_asin`、`has_price`、`has_brand`、`has_main_image`、`bullet_count`、`review_count`  
-  - `warnings`：中文人类可读警告列表
-- **导出 JSON**：下载完整结构化结果
-- **复制 JSON**：将同一结果写入剪贴板
-- **本地缓存**：`chrome.storage.local` 键 `lastScrapedData`，按 **ASIN + 域名** 恢复上次结果
-- **语言不匹配提示**：页面语言与站点常见语言不一致时提示，可选择坚持抓取
-- **评论范围元数据**：`metadata.reviews_scope` 固定为 `"visible_dom_only"`（仅当前页可见评论）
+  - `errors` / `warnings` / `notes`：三层诊断（见下节）
+- **覆盖率 chips**：在预览区可视化各字段是否命中
+- **notes vs warnings UI**：警告显示为「需要关注」，说明显示为「说明」
+- **导出 JSON**
+- **本地缓存**：`chrome.storage.local` 键 `lastScrapedData`，按 **ASIN + 域名** 恢复上次结果；预览展示缓存时间戳
+- **清除本地缓存**：一键清空 `lastScrapedData`
+- **语言不匹配提示**：页面语言与站点常见语言不一致时提示，可选择仍要分析
+- **评论范围元数据**：`metadata.reviews_scope` 固定为 `"visible_dom_only"`
+
+---
+
+## 状态模型（`errors` / `warnings` / `notes`）
+
+| 数组 | 含义 | 状态影响 |
+|------|------|----------|
+| `errors[]` | 硬失败（如无标题） | → **`failed`** |
+| `warnings[]` | 质量问题（如无卖点、卖点过少、ASIN 未知） | 有标题时 → **`partial`** |
+| `notes[]` | 信息性说明（如无价格、无品牌、无主图、无可见评论） | **不**强制 `partial`；可与 **`success`** 并存 |
+
+| `scrape_status` | 条件 |
+|-----------------|------|
+| `failed` | 无标题 / `errors` 非空 / 抓取抛错 |
+| `partial` | 有标题，且 `warnings` 非空 |
+| `success` | 有标题，且 `warnings` 为空（**`notes` 可非空**） |
+
+完整字段与示例见 [docs/SCHEMA.md](docs/SCHEMA.md)。手工验收步骤见 [docs/QA-CHECKLIST.md](docs/QA-CHECKLIST.md)。
 
 ---
 
 ## 安装（Chrome 加载已解压的扩展程序）
 
-本项目**无需构建**，直接从仓库根目录加载即可。
+本扩展本身**无需构建**即可加载；若要跑自动化测试，需 Node ≥ 18 并安装 devDependencies。
 
 1. 克隆或下载本仓库到本地。
 2. 打开 Chrome，访问 `chrome://extensions/`。
 3. 打开右上角 **开发者模式**。
 4. 点击 **加载已解压的扩展程序**。
 5. 选择本仓库根目录（包含 `manifest.json` 的文件夹）。
-6. 确认扩展列表中出现 **Amazon Product Insight**（版本 1.5.0）。
+6. 确认扩展列表中出现 **Amazon Product Insight**（版本 **1.6.1**）。
 
-安装后可在工具栏固定扩展图标，方便在商品页使用。
+安装后可在工具栏固定扩展图标；悬停标题为 **分析此商品**。
+
+### 私有交付打包（推荐）
+
+交付给他人时，请打 **运行时 zip**，不要整仓含 `node_modules`：
+
+**必须包含：**
+
+- `manifest.json`
+- `popup.html` / `popup.js`
+- `scraper/core.js`
+- `icons/icon16.png` / `icon48.png` / `icon128.png`
+
+**建议附带：** `README.md`、`PRIVACY.md`、`LICENSE`、`docs/SCHEMA.md`、`docs/QA-CHECKLIST.md`、`CHANGELOG.md`
+
+**不要放入 zip：** `node_modules/`、`.git/`、测试与开发工具（除非对方需要二次开发）
+
+接收方：解压 → Chrome `chrome://extensions` → 开发者模式 → **加载已解压的扩展程序** → 选中解压目录。
+
+发版前建议执行：`npm run check`，并按 [docs/QA-CHECKLIST.md](docs/QA-CHECKLIST.md) 做 US/UK/DE 真页冒烟。
 
 ---
 
@@ -51,18 +105,18 @@
 2. 点击工具栏中的扩展图标，打开弹窗。
 3. 查看顶部页面提示：商品页应显示「已就绪」及 ASIN；否则请先切换到正确页面。
 4. 点击 **分析此页面**。
-5. 解析完成后查看状态、覆盖率 chips、警告、主图/价格/品牌摘要、卖点与评论预览。
+5. 解析完成后查看状态、覆盖率 chips、警告（需要关注）/ 说明（notes）、主图/价格/品牌摘要、卖点与评论预览。
 6. 按需：
    - **导出 JSON**：下载结果文件
-   - **复制 JSON**：复制到剪贴板
+   - **清除本地缓存**：删除上次缓存结果
 
 ### 缓存恢复
 
-若当前标签页 URL 中的 ASIN 与域名，与本地缓存的上次结果一致，打开弹窗时会自动恢复上次结果。需要最新数据时，再次点击 **分析此页面** 即可重新抓取。
+若当前标签页 URL 中的 ASIN 与域名，与本地缓存的上次结果一致，打开弹窗时会自动恢复上次结果，并显示缓存时间戳。需要最新数据时，再次点击 **分析此页面** 即可重新抓取。
 
 ### 语言不匹配提示
 
-部分站点（如 `amazon.de`）可切换多种界面语言。若检测到页面语言与站点常见语言不一致，扩展会给出警告；可点击 **坚持抓取** 继续，也可先切换回本地语言再抓取，以降低选择器失效风险。
+部分站点（如 `amazon.de`）可切换多种界面语言。若检测到页面语言与站点常见语言不一致，扩展会给出警告；可点击 **仍要分析** 继续，也可先切换回本地语言再抓取，以降低选择器失效风险。
 
 ---
 
@@ -103,25 +157,17 @@ Amz_{marketplace}_{ASIN}_{scrape_timestamp}.json
 完整结构见 [docs/SCHEMA.md](docs/SCHEMA.md)。顶层包含：
 
 - `metadata`：schema 版本、抓取时间、站点、域名、语言、商品数量、`reviews_scope`
-- `products[]`：ASIN、标题、价格、品牌、主图、卖点、评论、状态、覆盖率、警告等
-
-### 抓取状态（摘要）
-
-| `scrape_status` | 条件 |
-|-----------------|------|
-| `failed` | 未能识别商品标题（或抓取过程抛出异常） |
-| `partial` | 有标题，但存在任意警告（如缺价格/品牌/主图/卖点/评论/ASIN 等） |
-| `success` | 有标题，且警告列表为空 |
+- `products[]`：ASIN、标题、价格、品牌、主图、卖点、评论、状态、覆盖率、`errors` / `warnings` / `notes` 等
 
 ---
 
 ## 已知限制
 
 1. **仅抓取当前页可见 DOM 中的评论**  
-   不会翻页、不会请求全部评论 API。`metadata.reviews_scope` 恒为 `visible_dom_only`。
+   不会翻页、不会请求全部评论 API。`metadata.reviews_scope` 恒为 `visible_dom_only`。无可见评论时记入 **`notes`**，不单独强制 `partial`。
 
 2. **依赖亚马逊页面 DOM 结构**  
-   改版或 A/B 测试可能导致选择器失效，出现字段漏抓；此时状态可能为 `partial` 或 `failed`，并带有中文警告。
+   改版或 A/B 测试可能导致选择器失效，出现字段漏抓；描述点相关问题会进入 **`warnings`** 并可能为 `partial`，无标题则为 `failed`。
 
 3. **多语言站点可能产生语言不匹配警告**  
    界面语言与站点默认语言不一致时，部分节点文案与结构可能不同，影响解析成功率。
@@ -133,7 +179,7 @@ Amz_{marketplace}_{ASIN}_{scrape_timestamp}.json
    不适用于大规模、无人值守的全站采集。请仅用于个人研究与辅助整理，并遵守适用法律法规与亚马逊服务条款。
 
 6. **部分字段可能因页面布局而缺失**  
-   例如无标价、品牌区域隐藏、主图懒加载失败、卖点过少、当前视口无评论等，会导致 `partial` 与对应警告。
+   例如无标价、品牌区域隐藏、主图懒加载失败、卖点过少、当前视口无评论等。其中价格/品牌/主图/可见评论缺失记入 **`notes`**；卖点缺失或过少、ASIN 未知记入 **`warnings`**。
 
 7. **当前不导出**  
    BSR、完整类目路径、评分均值/总评论数（官方统计）、变体完整矩阵、分页后的全部评论、优惠券明细等。
@@ -144,40 +190,66 @@ Amz_{marketplace}_{ASIN}_{scrape_timestamp}.json
 
 ```text
 amazon-scraper/
-├── manifest.json      # Manifest V3（名称、权限、图标、弹窗）
-├── popup.html         # 弹窗 UI
-├── popup.js           # 页面提示、注入解析、预览、导出/复制、缓存
+├── manifest.json           # Manifest V3（名称、权限、图标、弹窗、工具栏标题）
+├── popup.html              # 弹窗 UI（中文）
+├── popup.js                # UI 逻辑：页面提示、注入、预览、导出 JSON、缓存
+├── scraper/
+│   └── core.js             # 抓取引擎（schema 1.3.0，可注入 + Node 测试）
 ├── icons/
 │   ├── icon16.png
 │   ├── icon48.png
 │   └── icon128.png
+├── test/
+│   ├── fixtures/           # HTML 夹具（us-full、de 无评论、minimal、no-title 等）
+│   └── scraper.test.mjs    # node:test + jsdom
+├── scripts/
+│   └── verify.mjs          # 版本与架构一致性校验
 ├── docs/
-│   └── SCHEMA.md      # 导出 JSON 字段说明（schema 1.2.0）
-├── PRIVACY.md         # 隐私政策
-├── LICENSE            # MIT 许可证
-├── CHANGELOG.md       # 版本变更记录
+│   ├── SCHEMA.md           # 导出 JSON 字段说明（schema 1.3.0）
+│   └── QA-CHECKLIST.md     # 发版手工 QA 清单
+├── package.json            # npm scripts：test / verify / check
+├── PRIVACY.md              # 隐私政策
+├── LICENSE                 # MIT 许可证
+├── CHANGELOG.md            # 版本变更记录
 ├── README.md
 └── .gitignore
 ```
 
-说明：抓取逻辑以内联函数形式通过 `chrome.scripting.executeScript` 注入到当前页执行，**没有**独立的 `content.js` 文件。
+**没有**独立的 `content.js` 常驻内容脚本；解析通过注入 `scraper/core.js` 完成。
 
 ### 权限说明
 
 | 权限 | 用途 |
 |------|------|
 | `activeTab` | 在用户点击扩展后访问当前活动标签页 |
-| `scripting` | 向当前页注入并执行解析函数 |
+| `scripting` | 向当前页注入 `scraper/core.js` 并执行解析 |
 | `storage` | 本地缓存最近一次抓取结果（`lastScrapedData`） |
 | host_permissions | 上述亚马逊站点下的页面访问范围 |
 
 ---
 
-## 开发说明
+## 开发与测试
 
-- **无构建步骤**：修改 `popup.js` / `popup.html` / `manifest.json` 后，到 `chrome://extensions/` 点击该扩展的 **重新加载**，再刷新商品页并打开弹窗验证。
+### 扩展热重载
+
+- 修改 `popup.js` / `popup.html` / `manifest.json` / `scraper/core.js` 后，到 `chrome://extensions/` 点击该扩展的 **重新加载**，再刷新商品页并打开弹窗验证。
 - 调试建议：在商品详情页打开 DevTools；扩展弹窗可右键检查元素查看控制台错误。
-- 变更导出结构时，请同步更新 `schema_version` 与 [docs/SCHEMA.md](docs/SCHEMA.md)，并在 [CHANGELOG.md](CHANGELOG.md) 记录。
+
+### 自动化测试（jsdom）
+
+```bash
+npm install
+npm test                 # node --test test/scraper.test.mjs
+npm run verify           # 文件/版本/架构一致性
+npm run check            # 语法检查 + test + verify
+```
+
+夹具覆盖：完整成功页、仅 notes（无可见评论）、partial（无卖点）、failed（无标题）等状态语义。
+
+### 文档约定
+
+- 变更导出结构时，请同步更新 `scraper/core.js` 中的 `SCHEMA_VERSION`、[docs/SCHEMA.md](docs/SCHEMA.md)，并在 [CHANGELOG.md](CHANGELOG.md) 记录。
+- 发版前按 [docs/QA-CHECKLIST.md](docs/QA-CHECKLIST.md) 走手工验收。
 - 保持改动精简：优先修选择器与状态语义，避免引入未使用的打包工具链。
 
 ---
@@ -189,7 +261,8 @@ amazon-scraper/
 | [PRIVACY.md](PRIVACY.md) | 隐私政策：仅本地处理，不上传页面内容 |
 | [LICENSE](LICENSE) | MIT 许可证 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本变更记录 |
-| [docs/SCHEMA.md](docs/SCHEMA.md) | 导出 JSON schema `1.2.0` 字段说明 |
+| [docs/SCHEMA.md](docs/SCHEMA.md) | 导出 JSON schema `1.3.0` 字段说明 |
+| [docs/QA-CHECKLIST.md](docs/QA-CHECKLIST.md) | 发版 QA 清单（目标版本 1.6.1） |
 
 ---
 

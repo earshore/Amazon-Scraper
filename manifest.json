@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Amazon Product Insight",
-  "version": "1.5.0",
+  "version": "1.6.1",
   "description": "Locally parse the current Amazon product page (listing, price, visible reviews) and export structured JSON.",
   "author": "Aihang",
   "icons": {
@@ -29,7 +29,7 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Analyze this product"
+    "default_title": "分析此商品"
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"

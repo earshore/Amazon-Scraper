@@ -1,13 +1,14 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <style>
       body {
         width: 480px;
         padding: 15px;
-        font-family: "Amazon Ember", Arial, sans-serif;
+        font-family: "Amazon Ember", Arial, "Microsoft YaHei", sans-serif;
         background: #f4f4f4;
+        margin: 0;
       }
       .card {
         background: white;
@@ -94,14 +95,28 @@
         color: white;
         display: none;
       }
-      #copyJsonBtn {
-        background: #37475a;
-        color: white;
-        display: none;
+      #clearCacheBtn {
+        background: #f0f2f2;
+        color: #0f1111;
+        flex: 1 1 100%;
+        font-weight: 600;
       }
-      #downloadBtn:hover,
-      #copyJsonBtn:hover {
+      #downloadBtn:hover {
         background: #131921;
+      }
+      #clearCacheBtn:hover {
+        background: #e3e6e6;
+      }
+      .force-btn {
+        background: #856404;
+        color: white;
+        border: none;
+        padding: 6px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        min-width: auto;
+        flex: none;
       }
 
       #status {
@@ -122,6 +137,40 @@
         border: 1px solid #f0e0a0;
         text-align: left;
       }
+      .warn-block {
+        background: #fff8e6;
+        border: 1px solid #f0e0a0;
+        border-radius: 6px;
+        padding: 8px 10px;
+        margin: 0 0 10px;
+        font-size: 12px;
+        color: #7a5b00;
+      }
+      .note-block {
+        background: #f0f7ff;
+        border: 1px solid #cce0ff;
+        border-radius: 6px;
+        padding: 8px 10px;
+        margin: 0 0 10px;
+        font-size: 12px;
+        color: #0c5460;
+      }
+      .msg-title {
+        font-weight: 700;
+        margin-bottom: 4px;
+      }
+      .warn-block ul,
+      .note-block ul,
+      .warnings-list,
+      .notes-list {
+        margin: 0;
+        padding-left: 18px;
+      }
+      .cache-line {
+        margin-top: 8px;
+        font-size: 11px;
+        opacity: 0.9;
+      }
 
       #loader {
         display: none;
@@ -138,10 +187,7 @@
         margin: auto;
       }
       @keyframes spin {
-        0% {
-          transform: rotate(0deg);
-        }
-        100% {
+        to {
           transform: rotate(360deg);
         }
       }
@@ -150,9 +196,9 @@
         background: white;
         border: 1px solid #ddd;
         border-radius: 8px;
-        padding: 20px;
+        padding: 16px;
         display: none;
-        max-height: 500px;
+        max-height: 480px;
         overflow-y: auto;
       }
       .coverage-bar {
@@ -180,16 +226,17 @@
         background: #fff5f5;
         color: #c53030;
       }
-      .warnings-list {
-        margin: 0 0 12px;
-        padding-left: 18px;
-        font-size: 12px;
-        color: #856404;
-      }
       .meta-row {
         font-size: 12px;
         color: #565959;
         margin-bottom: 6px;
+      }
+      .product-title {
+        font-size: 17px;
+        font-weight: 700;
+        color: #0f1111;
+        margin-bottom: 6px;
+        line-height: 1.35;
       }
       .thumb {
         max-width: 96px;
@@ -200,9 +247,62 @@
         margin: 0 0 10px;
         background: #fafafa;
       }
+      .section-title {
+        font-weight: 700;
+        border-bottom: 2px solid #eee;
+        margin: 12px 0 8px;
+        padding-bottom: 4px;
+        font-size: 14px;
+      }
+      .bullet-list {
+        font-size: 13px;
+        padding-left: 20px;
+        margin: 0;
+        line-height: 1.5;
+      }
+      .empty-li {
+        color: #565959;
+        font-style: italic;
+        list-style: none;
+        margin-left: -20px;
+      }
+      .empty-p {
+        color: #565959;
+        font-size: 13px;
+        font-style: italic;
+      }
       .review-card {
         border-bottom: 1px solid #eee;
-        padding: 15px 0;
+        padding: 12px 0;
+      }
+      .review-top {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 4px;
+      }
+      .stars {
+        color: #de7921;
+        font-size: 14px;
+        white-space: nowrap;
+      }
+      .star-empty {
+        color: #ccc;
+      }
+      .review-headline {
+        font-weight: 700;
+        color: #0f1111;
+        font-size: 14px;
+      }
+      .review-date {
+        color: #565959;
+        font-size: 12px;
+      }
+      .review-body {
+        color: #0f1111;
+        font-size: 13px;
+        margin-top: 6px;
+        line-height: 1.45;
       }
       .scope-note {
         margin-top: 12px;
@@ -210,17 +310,14 @@
         border-top: 1px dashed #ddd;
         font-size: 11px;
         color: #565959;
-        line-height: 1.4;
+        line-height: 1.45;
       }
       .footer-links {
         margin-top: 12px;
         font-size: 11px;
         color: #565959;
         text-align: center;
-      }
-      .footer-links a {
-        color: #007185;
-        text-decoration: none;
+        line-height: 1.4;
       }
     </style>
   </head>
@@ -239,18 +336,19 @@
       <div id="loader">
         <div class="spinner"></div>
         <p style="margin: 8px 0 0; font-size: 13px; color: #565959">
-          正在解析亚马逊页面...
+          正在解析亚马逊页面…
         </p>
       </div>
       <div class="btn-group">
         <button id="scrapeBtn" type="button">分析此页面</button>
         <button id="downloadBtn" type="button">导出 JSON</button>
-        <button id="copyJsonBtn" type="button">复制 JSON</button>
+        <button id="clearCacheBtn" type="button">清除本地缓存</button>
       </div>
       <div id="status"></div>
       <div id="mdPreview"></div>
       <div class="footer-links">
-        数据仅在本地处理 · 详见扩展包内 PRIVACY.md
+        数据仅在本地处理 · 评论仅为页面可见部分<br />
+        详见 PRIVACY.md · schema 1.3.0
       </div>
     </div>
     <script src="popup.js"></script>
