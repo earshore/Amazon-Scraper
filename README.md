@@ -106,6 +106,7 @@
 
 - `manifest.json`
 - `popup.html` / `popup.js`
+- `background.js`
 - `scraper/marketplaces.js` / `scraper/core.js`
 - `icons/icon16.png` / `icon48.png` / `icon128.png`
 
@@ -222,6 +223,7 @@ amazon-scraper/
 ├── manifest.json           # Manifest V3（名称、权限、图标、弹窗、工具栏标题）
 ├── popup.html              # 弹窗 UI（中文）
 ├── popup.js                # UI 逻辑：页面提示、注入、预览、导出 JSON、缓存
+├── background.js           # 轻量 service worker（加快弹窗冷启动）
 ├── scraper/
 │   ├── marketplaces.js     # 域名 / 语言 / ASIN 单一数据源
 │   └── core.js             # 抓取引擎（schema 1.3.0，可注入 + Node 测试）
