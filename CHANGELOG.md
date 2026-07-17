@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Popup open latency: lightweight `background.js` service worker keeps extension warm; defer page detection / cache preview / remote thumbnail until after first paint so the toolbar popup feels instant.
 
+### Changed
+
+- Unified primary action: removed separate「清除本地缓存」; when cached data is shown the main button becomes「重新分析」(subtitle explains cache overwrite). Single CTA, higher information density.
+
 ### Added
 
 - Shared `scraper/marketplaces.js` (domains, language prefixes, ASIN helpers) as single source of truth.

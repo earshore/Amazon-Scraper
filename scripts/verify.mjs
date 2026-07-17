@@ -128,7 +128,14 @@ assert(popupHtml.includes('id="resultPreview"'), "resultPreview id");
 assert(!popupHtml.includes('id="mdPreview"'), "mdPreview renamed");
 assert(!popupHtml.includes("Amazon Ember"), "no Amazon Ember font name");
 assert(!popupHtml.includes("copyJsonBtn"), "no copy JSON button");
-assert(popupHtml.includes('id="clearCacheBtn"'), "clear cache");
+assert(popupHtml.includes('id="scrapeBtn"'), "primary scrape button");
+assert(popupHtml.includes("scrapeBtnSub"), "primary action subtitle");
+assert(!popupHtml.includes("clearCacheBtn"), "no separate clear-cache button");
+assert(
+  popupJs.includes("setPrimaryActionMode") &&
+    popupJs.includes("重新分析"),
+  "unified analyze/re-analyze primary action"
+);
 assert(!popupHtml.includes("downloadMdBtn"), "no MD export");
 assert(
   popupHtml.includes('src="scraper/marketplaces.js"'),

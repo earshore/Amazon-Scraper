@@ -34,6 +34,27 @@ function setScrapeEnabled(enabled) {
   if (btn) btn.disabled = !enabled;
 }
 
+/**
+ * One primary action: fresh analyze vs re-analyze (overwrites local cache).
+ * Keeps information density via subtitle; no separate clear-cache control.
+ * @param {"fresh"|"refresh"} mode
+ */
+function setPrimaryActionMode(mode) {
+  const btn = document.getElementById("scrapeBtn");
+  const label = document.getElementById("scrapeBtnLabel");
+  const sub = document.getElementById("scrapeBtnSub");
+  if (!btn || !label || !sub) return;
+  const next = mode === "refresh" ? "refresh" : "fresh";
+  btn.dataset.mode = next;
+  if (next === "refresh") {
+    label.textContent = "重新分析";
+    sub.textContent = "覆盖本地缓存 · 抓取当前页最新数据";
+  } else {
+    label.textContent = "分析此页面";
+    sub.textContent = "解析当前商品页 · 结果可导出 JSON";
+  }
+}
+
 function resetStatusStyles() {
   const status = document.getElementById("status");
   if (!status) return;
@@ -300,6 +321,7 @@ function afterFirstPaint(fn) {
 function applyExportableResult(result, options = {}) {
   finalData = result;
   setExportButtonsVisible(true);
+  setPrimaryActionMode("refresh");
   const preview = document.getElementById("resultPreview");
   if (preview) preview.style.display = "block";
   const prod = result.products[0];
@@ -316,6 +338,7 @@ function handleScrapeResult(result) {
   if (!result || !result.products || result.products.length === 0) {
     finalData = null;
     setExportButtonsVisible(false);
+    setPrimaryActionMode("fresh");
     showError("解析失败", "未找到商品信息");
     return;
   }
@@ -325,6 +348,7 @@ function handleScrapeResult(result) {
   if (prod.scrape_status === "failed" || !isExportableResult(result)) {
     finalData = null;
     setExportButtonsVisible(false);
+    setPrimaryActionMode("fresh");
     // Do not cache failed results
     chrome.storage.local.remove(["lastScrapedData"]);
     const detail =
@@ -464,7 +488,6 @@ async function onScrapeClick() {
 function wireUiHandlers() {
   const scrapeBtn = document.getElementById("scrapeBtn");
   const downloadBtn = document.getElementById("downloadBtn");
-  const clearCacheBtn = document.getElementById("clearCacheBtn");
 
   if (!scrapeBtn || !downloadBtn) {
     showBootError(
@@ -472,6 +495,8 @@ function wireUiHandlers() {
     );
     return false;
   }
+
+  setPrimaryActionMode("fresh");
 
   scrapeBtn.addEventListener("click", () => {
     onScrapeClick().catch((err) =>
@@ -493,20 +518,6 @@ function wireUiHandlers() {
     } catch (err) {
       showError("下载出错", err.message || String(err));
     }
-  });
-
-  clearCacheBtn?.addEventListener("click", () => {
-    if (!window.confirm("确定清除本地缓存的上次分析结果？")) return;
-    chrome.storage.local.remove(["lastScrapedData"], () => {
-      finalData = null;
-      setExportButtonsVisible(false);
-      const preview = document.getElementById("resultPreview");
-      if (preview) {
-        preview.style.display = "none";
-        preview.innerHTML = "";
-      }
-      showToast("已清除本地缓存", { kind: "ok", autoHideMs: 3200 });
-    });
   });
 
   return true;
@@ -601,19 +612,32 @@ async function startScraping(tab) {
   scrapeInFlight = true;
   setScrapeEnabled(false);
 
-  showToast("正在解析商品与评论…", { kind: "info", autoHideMs: 0 });
+  const isRefresh =
+    document.getElementById("scrapeBtn")?.dataset?.mode === "refresh";
+  showToast(
+    isRefresh ? "正在重新分析（将覆盖本地缓存）…" : "正在解析商品与评论…",
+    { kind: "info", autoHideMs: 0 }
+  );
   setLoaderVisible(true);
   setExportButtonsVisible(false);
+  // Clear prior preview while refreshing so old data is not mistaken for new.
+  const preview = document.getElementById("resultPreview");
+  if (preview) {
+    preview.style.display = "none";
+    preview.innerHTML = "";
+  }
 
   try {
     const result = await runPageScrape(tab.id);
     if (!result) {
       showError("连接失败", "无法访问页面内容。");
+      setPrimaryActionMode(isRefresh ? "fresh" : "fresh");
       return;
     }
     handleScrapeResult(result);
   } catch (err) {
     showError("连接失败", err.message || "无法访问页面内容。");
+    setPrimaryActionMode("fresh");
   } finally {
     setLoaderVisible(false);
     scrapeInFlight = false;

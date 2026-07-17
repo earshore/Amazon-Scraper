@@ -45,7 +45,7 @@
 - **notes vs warnings UI**：警告显示为「需要关注」，说明显示为「说明」
 - **导出 JSON**
 - **本地缓存**：`chrome.storage.local` 键 `lastScrapedData`，按 **ASIN + 域名** 恢复上次结果；预览展示缓存时间戳
-- **清除本地缓存**：一键清空 `lastScrapedData`
+- **重新分析**：已有本地结果时，主按钮变为「重新分析」，覆盖 `lastScrapedData` 缓存
 - **语言不匹配提示**：当 `document.documentElement.lang` 不在该站点允许的语言前缀列表中时提示；可选择 **仍要分析**
 - **评论范围元数据**：`metadata.reviews_scope` 固定为 `"visible_dom_only"`
 
@@ -136,7 +136,7 @@ npm run pack
 5. 解析完成后查看状态、覆盖率 chips、警告（需要关注）/ 说明（notes）、主图/价格/品牌摘要、卖点与评论预览。
 6. 按需：
    - **导出 JSON**：下载结果文件
-   - **清除本地缓存**：删除上次缓存结果
+   - 若已有本页缓存，主按钮为 **重新分析**（覆盖本地缓存并重新抓取）
 
 ### 缓存恢复
 
