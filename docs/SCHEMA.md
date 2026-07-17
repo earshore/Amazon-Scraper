@@ -4,7 +4,7 @@
 
 | 项目 | 值 |
 |------|-----|
-| 扩展版本 | **`1.6.1`** |
+| 扩展版本 | **`1.6.2`** |
 | Schema 版本 | **`1.3.0`** |
 | 抓取引擎 | `scraper/core.js`（`SCHEMA_VERSION` / `scrapeAmazonPage`） |
 
@@ -230,7 +230,7 @@
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `headline` | string | 评论标题；清理失败时可能为 `"No Title"` |
-| `body` | string | 评论正文；过短条目会被过滤；占位可能为 `"No Content"` |
+| `body` | string | 评论正文；**过短（≤5 字符）的条目会被直接丢弃**，不写入占位正文 |
 | `star_rating` | number | 星级，解析自评分节点；失败时为 `0`。可能为小数（如 `4.0`） |
 | `review_date` | string | 页面上的日期原始文本（多语言原文），未清洗为标准日期 |
 | `origin_country` | string | 从来源/日期文案中解析的国家/地区；解析不到时为 `"Global"` |

@@ -1,4 +1,13 @@
+/* global AmazonProductInsightMarketplaces, chrome */
 let finalData = null;
+let scrapeInFlight = false;
+
+const mp = globalThis.AmazonProductInsightMarketplaces;
+if (!mp) {
+  console.error(
+    "AmazonProductInsightMarketplaces missing — load scraper/marketplaces.js first"
+  );
+}
 
 function escapeHtml(unsafe) {
   if (!unsafe) return "";
@@ -35,17 +44,15 @@ function resetStatusStyles() {
 }
 
 function extractAsinFromUrl(url) {
-  if (!url) return null;
-  const m = String(url).match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i);
-  return m ? m[1].toUpperCase() : null;
+  return mp ? mp.extractAsinFromUrl(url) : null;
 }
 
 function isAmazonHost(hostname) {
-  if (!hostname) return false;
-  // Strict allowlist (aligned with marketplace / host_permissions); no broad includes()
-  return /(^|\.)amazon\.(com|de|fr|it|es|nl|se|pl|co\.uk|com\.be|ie)$/i.test(
-    hostname
-  );
+  return mp ? mp.isAmazonHost(hostname) : false;
+}
+
+function isExportableResult(data) {
+  return mp ? mp.isExportableResult(data) : false;
 }
 
 function formatTimestamp(iso) {
@@ -102,7 +109,7 @@ function updatePageHint(tab) {
     hint.className = "page-hint warn";
     hint.style.display = "block";
     hint.innerHTML =
-      "<strong>请打开商品详情页</strong>已检测到亚马逊站点，但当前页不是商品详情（缺少 <code>/dp/ASIN</code> 或 <code>/gp/product/ASIN</code>）。搜索结果页、购物车等无法分析。";
+      "<strong>请打开商品详情页</strong>已检测到亚马逊站点，但当前页不是商品详情（缺少 <code>/dp/ASIN</code>、<code>/gp/product/ASIN</code> 或 <code>/gp/aw/d/ASIN</code>）。搜索结果页、购物车等无法分析。";
     setScrapeEnabled(false);
     return { ok: false, asin: null, host, reason: "not_product" };
   }
@@ -197,7 +204,6 @@ function showSuccessStatus(prod, metadata, options = {}) {
     return;
   }
 
-  // success (notes allowed)
   status.className = "success";
   status.style.textAlign = "left";
   status.innerHTML = `
@@ -208,18 +214,31 @@ function showSuccessStatus(prod, metadata, options = {}) {
   `;
 }
 
-function handleScrapeResult(result) {
+function applyExportableResult(result, options = {}) {
   finalData = result;
-  chrome.storage.local.set({ lastScrapedData: finalData });
+  setExportButtonsVisible(true);
+  const preview = document.getElementById("resultPreview");
+  if (preview) preview.style.display = "block";
+  const prod = result.products[0];
+  showSuccessStatus(prod, result.metadata, options);
+  renderPreview(prod, result.metadata);
+}
 
-  if (!finalData || !finalData.products || finalData.products.length === 0) {
+function handleScrapeResult(result) {
+  if (!result || !result.products || result.products.length === 0) {
+    finalData = null;
+    setExportButtonsVisible(false);
     showError("解析失败", "未找到商品信息");
     return;
   }
 
-  const prod = finalData.products[0];
+  const prod = result.products[0];
 
-  if (prod.scrape_status === "failed") {
+  if (prod.scrape_status === "failed" || !isExportableResult(result)) {
+    finalData = null;
+    setExportButtonsVisible(false);
+    // Do not cache failed results
+    chrome.storage.local.remove(["lastScrapedData"]);
     const detail =
       (prod.errors && prod.errors.join("；")) ||
       prod.error ||
@@ -228,19 +247,18 @@ function handleScrapeResult(result) {
     return;
   }
 
-  setExportButtonsVisible(true);
-  document.getElementById("mdPreview").style.display = "block";
-  showSuccessStatus(prod, finalData.metadata, { fromCache: false });
-  renderPreview(prod, finalData.metadata);
+  finalData = result;
+  chrome.storage.local.set({ lastScrapedData: finalData });
+  applyExportableResult(result, { fromCache: false });
 }
 
 /**
- * Inject scraper/core.js then call scrapeAmazonPage (extension isolated world).
+ * Inject marketplaces + scraper/core.js then call scrapeAmazonPage (ISOLATED world).
  */
 async function runPageScrape(tabId) {
   await chrome.scripting.executeScript({
     target: { tabId },
-    files: ["scraper/core.js"],
+    files: ["scraper/marketplaces.js", "scraper/core.js"],
     world: "ISOLATED",
   });
 
@@ -261,12 +279,17 @@ async function runPageScrape(tabId) {
           },
           products: [
             {
+              asin: "UNKNOWN",
+              productTitle: "",
+              price: "",
+              brand: "",
+              main_image: "",
+              feature_bullets: [],
+              customer_reviews: [],
               scrape_status: "failed",
               errors: ["抓取脚本未加载（scrapeAmazonPage 不可用）"],
               warnings: [],
               notes: [],
-              feature_bullets: [],
-              customer_reviews: [],
               coverage: {
                 has_title: false,
                 has_asin: false,
@@ -297,6 +320,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     chrome.storage.local.get(["lastScrapedData"], (result) => {
       if (!result.lastScrapedData) return;
       const cachedData = result.lastScrapedData;
+      if (!isExportableResult(cachedData)) {
+        chrome.storage.local.remove(["lastScrapedData"]);
+        return;
+      }
       if (!cachedData.products || !cachedData.products.length) return;
 
       const cachedProduct = cachedData.products[0];
@@ -306,11 +333,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         cachedProduct.asin === ctx.asin &&
         cachedMetadata.domain === ctx.host
       ) {
-        finalData = cachedData;
-        setExportButtonsVisible(true);
-        document.getElementById("mdPreview").style.display = "block";
-        showSuccessStatus(cachedProduct, cachedMetadata, { fromCache: true });
-        renderPreview(cachedProduct, cachedMetadata);
+        applyExportableResult(cachedData, { fromCache: true });
       }
     });
   } catch (err) {
@@ -375,24 +398,7 @@ document.getElementById("scrapeBtn").addEventListener("click", async () => {
       return;
     }
 
-    const languageMap = [
-      { domain: "amazon.com.be", prefixes: ["fr", "nl", "en"] },
-      { domain: "amazon.co.uk", prefixes: ["en"] },
-      { domain: "amazon.ie", prefixes: ["en"] },
-      { domain: "amazon.de", prefixes: ["de", "en"] },
-      { domain: "amazon.fr", prefixes: ["fr", "en"] },
-      { domain: "amazon.it", prefixes: ["it", "en"] },
-      { domain: "amazon.es", prefixes: ["es", "en"] },
-      { domain: "amazon.nl", prefixes: ["nl", "en"] },
-      { domain: "amazon.se", prefixes: ["sv", "en"] },
-      { domain: "amazon.pl", prefixes: ["pl", "en"] },
-      { domain: "amazon.com", prefixes: ["en"] },
-    ];
-
-    const expectedLang = languageMap.find(
-      (item) => host === item.domain || host.endsWith(`.${item.domain}`)
-    );
-    const prefixes = expectedLang ? expectedLang.prefixes : null;
+    const prefixes = mp ? mp.getLangPrefixes(host) : null;
 
     if (
       prefixes &&
@@ -413,6 +419,10 @@ document.getElementById("scrapeBtn").addEventListener("click", async () => {
 });
 
 async function startScraping(tab) {
+  if (scrapeInFlight) return;
+  scrapeInFlight = true;
+  setScrapeEnabled(false);
+
   const status = document.getElementById("status");
   resetStatusStyles();
   status.style.display = "block";
@@ -422,15 +432,26 @@ async function startScraping(tab) {
 
   try {
     const result = await runPageScrape(tab.id);
-    setLoaderVisible(false);
     if (!result) {
       showError("连接失败", "无法访问页面内容。");
       return;
     }
     handleScrapeResult(result);
   } catch (err) {
-    setLoaderVisible(false);
     showError("连接失败", err.message || "无法访问页面内容。");
+  } finally {
+    setLoaderVisible(false);
+    scrapeInFlight = false;
+    try {
+      const [active] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      if (active) updatePageHint(active);
+      else setScrapeEnabled(true);
+    } catch {
+      setScrapeEnabled(true);
+    }
   }
 }
 
@@ -450,7 +471,13 @@ function showWarning(summary, detail, onContinue) {
         )}</div>
         <button id="forceContinueBtn" type="button" class="force-btn">仍要分析</button>
     `;
-  document.getElementById("forceContinueBtn").onclick = onContinue;
+  const btn = document.getElementById("forceContinueBtn");
+  btn.onclick = onContinue;
+  try {
+    btn.focus();
+  } catch {
+    /* ignore */
+  }
 }
 
 function showError(summary, detail) {
@@ -470,13 +497,17 @@ function showError(summary, detail) {
 }
 
 function renderPreview(prod, metadata = {}) {
-  const preview = document.getElementById("mdPreview");
+  const preview = document.getElementById("resultPreview");
+  if (!preview) return;
   const coverage = prod.coverage || {};
   const warnings = prod.warnings || [];
   const notes = prod.notes || [];
   const bullets = prod.feature_bullets || [];
   const reviews = prod.customer_reviews || [];
   const scope = metadata.reviews_scope || "visible_dom_only";
+  const titleAlt = prod.productTitle
+    ? escapeHtml(prod.productTitle).slice(0, 120)
+    : "商品主图";
 
   const chip = (label, state) =>
     `<span class="coverage-chip ${state}">${escapeHtml(label)}</span>`;
@@ -523,6 +554,7 @@ function renderPreview(prod, metadata = {}) {
         .join("")}</ul></div>`
     : "";
 
+  // Preview loads remote Amazon CDN images when present (see PRIVACY.md).
   const safeImage =
     prod.main_image && /^https:\/\//i.test(prod.main_image)
       ? prod.main_image
@@ -530,7 +562,7 @@ function renderPreview(prod, metadata = {}) {
   const thumbHtml = safeImage
     ? `<img class="thumb" src="${escapeHtml(
         safeImage
-      )}" alt="" referrerpolicy="no-referrer" />`
+      )}" alt="${titleAlt}" referrerpolicy="no-referrer" />`
     : "";
 
   const priceLine = prod.price
@@ -542,8 +574,7 @@ function renderPreview(prod, metadata = {}) {
 
   let bulletsHtml = bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join("");
   if (!bulletsHtml) {
-    bulletsHtml =
-      '<li class="empty-li">（未识别到描述点）</li>';
+    bulletsHtml = '<li class="empty-li">（未识别到描述点）</li>';
   }
 
   let reviewsHtml = "";
@@ -596,8 +627,8 @@ function renderPreview(prod, metadata = {}) {
 }
 
 document.getElementById("downloadBtn").addEventListener("click", () => {
-  if (!finalData?.products?.[0]) {
-    showError("下载失败", "没有可供下载的数据，请重新分析。");
+  if (!isExportableResult(finalData)) {
+    showError("下载失败", "没有可供下载的有效数据，请重新分析。");
     return;
   }
   try {
@@ -612,10 +643,11 @@ document.getElementById("downloadBtn").addEventListener("click", () => {
 });
 
 document.getElementById("clearCacheBtn")?.addEventListener("click", () => {
+  if (!window.confirm("确定清除本地缓存的上次分析结果？")) return;
   chrome.storage.local.remove(["lastScrapedData"], () => {
     finalData = null;
     setExportButtonsVisible(false);
-    const preview = document.getElementById("mdPreview");
+    const preview = document.getElementById("resultPreview");
     if (preview) {
       preview.style.display = "none";
       preview.innerHTML = "";

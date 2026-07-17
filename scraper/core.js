@@ -1,8 +1,9 @@
 /**
  * Amazon Product Insight — page scrape core (schema 1.3.0)
  *
- * Browser (extension inject): exposes globalThis.scrapeAmazonPage
- * Node (tests): module.exports = { scrapeAmazonPage, SCHEMA_VERSION, ... }
+ * Browser (extension inject): load marketplaces.js first, then core.js
+ *   → globalThis.scrapeAmazonPage / AmazonProductInsightScraper
+ * Node (tests): require("./core") after marketplaces resolve via relative require
  *
  * Status model:
  * - failed: hard errors (no title, or thrown exception)
@@ -14,15 +15,33 @@
  * errors = hard failures
  */
 (function (root, factory) {
-  const api = factory();
+  function loadMarketplaces() {
+    if (root.AmazonProductInsightMarketplaces) {
+      return root.AmazonProductInsightMarketplaces;
+    }
+    if (typeof require === "function") {
+      try {
+        return require("./marketplaces.js");
+      } catch (_e) {
+        return require("./marketplaces");
+      }
+    }
+    throw new Error(
+      "AmazonProductInsightMarketplaces missing — inject scraper/marketplaces.js first"
+    );
+  }
+  const mp = loadMarketplaces();
+  const api = factory(mp);
   if (typeof module === "object" && module.exports) {
     module.exports = api;
   }
   root.scrapeAmazonPage = api.scrapeAmazonPage;
   root.AmazonProductInsightScraper = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function () {
+})(typeof globalThis !== "undefined" ? globalThis : this, function (mp) {
   const SCHEMA_VERSION = "1.3.0";
   const REVIEWS_SCOPE = "visible_dom_only";
+  const MAX_REVIEWS = 20;
+  const MAX_BULLETS = 10;
 
   function scrapeAmazonPage(doc, loc) {
     if (!doc) {
@@ -89,17 +108,19 @@
         "span#productTitle",
         "#titleSection #title",
       ],
+      // Prefer buybox / core price; avoid bare strikethrough list prices.
       price: [
-        "#corePrice_feature_div .a-price .a-offscreen",
-        "#corePriceDisplay_desktop_feature_div .a-price .a-offscreen",
+        "#corePrice_feature_div .a-price:not(.a-text-price) .a-offscreen",
+        "#corePriceDisplay_desktop_feature_div .a-price:not(.a-text-price) .a-offscreen",
+        "span.a-price.apexPriceToPay .a-offscreen",
+        "#apex_desktop .a-price:not(.a-text-price) .a-offscreen",
         "#priceblock_ourprice",
         "#priceblock_dealprice",
         "#priceblock_saleprice",
         "#price_inside_buybox",
-        ".a-price.aok-align-center .a-offscreen",
         "#tp_price_block_total_price_ww .a-offscreen",
-        "span.a-price.a-text-price.a-size-medium.apexPriceToPay .a-offscreen",
         "#sns-base-price .a-offscreen",
+        ".a-price.aok-align-center:not(.a-text-price) .a-offscreen",
       ],
       brand: [
         "#bylineInfo",
@@ -117,18 +138,22 @@
       ],
       bulletPoints: [
         "#feature-bullets ul li .a-list-item",
+        "#feature-bullets ul li",
+        "#featurebullets_feature_div ul li .a-list-item",
         "#productFactsDesktop_feature_div ul li",
+        "#productFactsDesktop_feature_div li",
+        "#aboutThisItem_feature_div ul li .a-list-item",
         ".a-unordered-list.a-vertical.a-spacing-small li span.a-list-item",
         ".a-unordered-list.a-vertical li span.a-list-item",
-        ".a-unordered-list.a-vertical li",
       ],
+      // Prefer official hooks / review list; bare .review last and scoped.
       reviewContainers: [
+        '#cm_cr-review_list [data-hook="review"]',
+        '#customer-reviews-content [data-hook="review"]',
         '[data-hook="review"]',
         '[data-hook="reviewContainer"]',
-        ".review",
-        ".a-section.review",
         "#cm_cr-review_list .review",
-        ".cr-widget-Reviews .review",
+        "#customer-reviews-content .review",
       ],
       reviewBody: [
         '[data-hook="reviewRichContentContainer"]',
@@ -156,28 +181,8 @@
       ],
     };
 
-    const marketplaceEntries = [
-      ["amazon.com.be", "BE"],
-      ["amazon.co.uk", "UK"],
-      ["amazon.ie", "IE"],
-      ["amazon.de", "DE"],
-      ["amazon.fr", "FR"],
-      ["amazon.it", "IT"],
-      ["amazon.es", "ES"],
-      ["amazon.nl", "NL"],
-      ["amazon.se", "SE"],
-      ["amazon.pl", "PL"],
-      ["amazon.com", "US"],
-    ];
-
     const host = locationLike.hostname || "";
-    let marketplace = "OTHER";
-    for (const [domain, code] of marketplaceEntries) {
-      if (host === domain || host.endsWith("." + domain)) {
-        marketplace = code;
-        break;
-      }
-    }
+    const marketplace = mp.getMarketplaceCode(host);
 
     const now = new Date().toISOString();
     const langAttr =
@@ -185,6 +190,7 @@
       (doc.documentElement && doc.documentElement.lang) ||
       "en";
     const langCode = String(langAttr).split("-")[0].toLowerCase();
+    // ISO 639 language codes only (not marketplace codes).
     const fullLangMap = {
       de: "German",
       en: "English",
@@ -194,13 +200,10 @@
       nl: "Dutch",
       pl: "Polish",
       sv: "Swedish",
-      be: "French",
-      ie: "English",
-      tr: "Turkish",
-      us: "English",
       pt: "Portuguese",
       ja: "Japanese",
       zh: "Chinese",
+      tr: "Turkish",
     };
     const language =
       fullLangMap[langCode] ||
@@ -213,17 +216,20 @@
     ];
 
     const getFirstValidText = (selectors, parent, useBlacklist) => {
-      const root = parent || doc;
+      const rootEl = parent || doc;
       const bl = useBlacklist !== false;
       for (const sel of selectors) {
         let el;
         try {
-          el = root.querySelector(sel);
+          el = rootEl.querySelector(sel);
         } catch {
           continue;
         }
         if (!el) continue;
-        // Prefer textContent: reliable in both real pages and jsdom (innerText is often empty in jsdom)
+        if (el.closest && el.closest(".a-text-price") && !el.closest(".apexPriceToPay")) {
+          // Strikethrough list price — skip unless it is the apex pay price.
+          if (!/apexPriceToPay/i.test(sel)) continue;
+        }
         const raw =
           (el.textContent && el.textContent.trim()) ||
           (el.innerText && el.innerText.trim()) ||
@@ -236,11 +242,11 @@
     };
 
     const getFirstElement = (selectors, parent) => {
-      const root = parent || doc;
+      const rootEl = parent || doc;
       for (const sel of selectors) {
         let el;
         try {
-          el = root.querySelector(sel);
+          el = rootEl.querySelector(sel);
         } catch {
           continue;
         }
@@ -303,6 +309,51 @@
       return 0;
     };
 
+    const pickLargestFromSrcset = (srcset) => {
+      if (!srcset) return "";
+      let bestUrl = "";
+      let bestW = -1;
+      const parts = String(srcset).split(",");
+      for (const part of parts) {
+        const bits = part.trim().split(/\s+/);
+        if (!bits[0]) continue;
+        const url = bits[0];
+        let w = 0;
+        if (bits[1] && /w$/i.test(bits[1])) {
+          w = parseInt(bits[1], 10) || 0;
+        } else if (bits[1] && /x$/i.test(bits[1])) {
+          w = (parseFloat(bits[1]) || 1) * 1000;
+        }
+        if (w >= bestW && /^https:\/\//i.test(url)) {
+          bestW = w;
+          bestUrl = url;
+        }
+      }
+      return bestUrl;
+    };
+
+    const pickLargestDynamicImage = (jsonStr) => {
+      try {
+        const map = JSON.parse(jsonStr);
+        let bestUrl = "";
+        let bestArea = -1;
+        for (const [url, dims] of Object.entries(map)) {
+          if (!/^https:\/\//i.test(url)) continue;
+          let area = 0;
+          if (Array.isArray(dims) && dims.length >= 2) {
+            area = Number(dims[0]) * Number(dims[1]) || 0;
+          }
+          if (area >= bestArea) {
+            bestArea = area;
+            bestUrl = url;
+          }
+        }
+        return bestUrl;
+      } catch {
+        return "";
+      }
+    };
+
     const extractMainImage = () => {
       for (const sel of config.mainImage) {
         let el;
@@ -312,22 +363,26 @@
           continue;
         }
         if (!el) continue;
-        const src =
-          el.getAttribute("data-old-hires") ||
-          el.getAttribute("data-a-dynamic-image") ||
-          el.currentSrc ||
-          el.getAttribute("src") ||
-          "";
-        if (src && src.startsWith("{")) {
-          try {
-            const map = JSON.parse(src);
-            const keys = Object.keys(map);
-            if (keys.length) return keys[0];
-          } catch {
-            /* ignore */
-          }
+
+        const dynamic = el.getAttribute("data-a-dynamic-image");
+        if (dynamic && dynamic.startsWith("{")) {
+          const fromDyn = pickLargestDynamicImage(dynamic);
+          if (fromDyn) return fromDyn;
         }
-        if (src && /^https?:\/\//i.test(src)) return src.split(" ")[0];
+
+        const hires = el.getAttribute("data-old-hires");
+        if (hires && /^https:\/\//i.test(hires)) return hires.split(" ")[0];
+
+        const fromSrcset = pickLargestFromSrcset(el.getAttribute("srcset"));
+        if (fromSrcset) return fromSrcset;
+
+        const src =
+          el.currentSrc || el.getAttribute("src") || "";
+        if (src && src.startsWith("{")) {
+          const fromJson = pickLargestDynamicImage(src);
+          if (fromJson) return fromJson;
+        }
+        if (src && /^https:\/\//i.test(src)) return src.split(" ")[0];
       }
       return "";
     };
@@ -344,13 +399,18 @@
         .trim();
     };
 
+    const isTrustedBulletSelector = (sel) =>
+      sel.startsWith("#feature-bullets") ||
+      sel.startsWith("#featurebullets_feature_div") ||
+      sel.startsWith("#productFactsDesktop_feature_div") ||
+      sel.startsWith("#aboutThisItem_feature_div");
+
     const productTitle = getFirstValidText(config.productTitle);
     const asinInput = doc.querySelector("#ASIN");
     const asinFromInput = asinInput && asinInput.value ? asinInput.value : "";
     const href = locationLike.href || "";
-    const asinFromUrl =
-      (href.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i) || [])[1] || "";
-    const asin = (asinFromInput || asinFromUrl || "UNKNOWN").toUpperCase();
+    const asinFromUrl = mp.extractAsinFromUrl(href) || "";
+    const asin = mp.resolveAsin(asinFromInput, asinFromUrl);
 
     let price = getFirstValidText(config.price, doc, false);
     if (price) price = price.replace(/\s+/g, " ").trim();
@@ -360,6 +420,8 @@
 
     let feature_bullets = [];
     let bulletsMatchedSelector = "";
+    let bulletsRawCount = 0;
+    let bulletsFilteredCount = 0;
     for (const sel of config.bulletPoints) {
       let nodes;
       try {
@@ -368,12 +430,26 @@
         continue;
       }
       if (!nodes || nodes.length === 0) continue;
+      bulletsRawCount = nodes.length;
+      const trusted = isTrustedBulletSelector(sel);
       const cleaned = Array.from(nodes)
         .filter((n) => {
+          if (trusted) {
+            const isDetails =
+              n.closest("#prodDetails") ||
+              n.closest("#productDetails_feature_div");
+            const isSideBar =
+              n.closest("#rightCol") || n.closest("#nav-flyout-ewc");
+            const isCustomerReview = n.closest(
+              "#cm_cr-review_list, #customer-reviews-content, [data-hook='review']"
+            );
+            return !isDetails && !isSideBar && !isCustomerReview;
+          }
           const isInMainFeatureArea =
             n.closest("#feature-bullets") ||
             n.closest("#featurebullets_feature_div") ||
             n.closest("#productFactsDesktop_feature_div") ||
+            n.closest("#aboutThisItem_feature_div") ||
             n.closest(".a-expander-content");
 
           const isDetails =
@@ -385,7 +461,7 @@
             n.closest("#rightCol") || n.closest("#nav-flyout-ewc");
 
           const isCustomerReview = n.closest(
-            "#a-fixed-left-grid-col.a-col-left, #a-fixed-left-grid-col .a-col-left"
+            "#cm_cr-review_list, #customer-reviews-content, [data-hook='review']"
           );
 
           return (
@@ -395,8 +471,9 @@
         .map((n) => n.textContent.replace(/\s+/g, " ").trim())
         .filter((t) => t.length > 5);
 
+      bulletsFilteredCount = cleaned.length;
       if (cleaned.length > 0) {
-        feature_bullets = [...new Set(cleaned)].slice(0, 10);
+        feature_bullets = [...new Set(cleaned)].slice(0, MAX_BULLETS);
         bulletsMatchedSelector = sel;
         break;
       }
@@ -412,7 +489,7 @@
         continue;
       }
       if (found && found.length > 0) {
-        reviewNodes = Array.from(found);
+        reviewNodes = Array.from(found).slice(0, MAX_REVIEWS);
         reviewsMatchedSelector = sel;
         break;
       }
@@ -473,12 +550,9 @@
           el
         );
         const dateText = dateEl ? cleanElementText(dateEl) : "";
-        const countryMatch = dateText.match(
-          /(?:in|aus|en|il|em|nel|su|von|från|z|u|en\sel)\s+(.+?)\s+(?:on|am|le|il|el|au|al|del|den|dnia|på|op|el)\s+\d/i
-        );
         const parsedOriginCountry = extractOriginCountry(dateText);
 
-        // Drop empty shells before placeholders so "No Content" cannot pass length filters
+        // Drop empty shells — short bodies are discarded (no "No Content" placeholder)
         if (!cleanBody || cleanBody.length <= 5) {
           return null;
         }
@@ -488,12 +562,7 @@
           body: cleanBody,
           star_rating: extractStars(el),
           review_date: dateText,
-          origin_country:
-            parsedOriginCountry !== "Global"
-              ? parsedOriginCountry
-              : countryMatch
-              ? countryMatch[1].trim()
-              : "Global",
+          origin_country: parsedOriginCountry,
         };
       })
       .filter(Boolean);
@@ -508,7 +577,6 @@
       review_count: customer_reviews.length,
     };
 
-    // --- Status layering ---
     const errors = [];
     const warnings = [];
     const notes = [];
@@ -553,6 +621,10 @@
     const debug = {
       bullets_selector: bulletsMatchedSelector || null,
       reviews_selector: reviewsMatchedSelector || null,
+      bullets_raw_count: bulletsRawCount,
+      bullets_filtered_count: bulletsFilteredCount,
+      asin_from_input: asinFromInput || null,
+      asin_from_url: asinFromUrl || null,
     };
 
     const productsList = [
@@ -591,5 +663,7 @@
     scrapeAmazonPage: scrapeAmazonPage,
     SCHEMA_VERSION: SCHEMA_VERSION,
     REVIEWS_SCOPE: REVIEWS_SCOPE,
+    MAX_REVIEWS: MAX_REVIEWS,
+    buildFailedPayload: buildFailedPayload,
   };
 });

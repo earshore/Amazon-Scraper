@@ -2,7 +2,7 @@
 
 **Amazon Product Insight**
 
-最后更新日期 / Last updated: **2026-07-17**
+最后更新日期 / Last updated: **2026-07-17**（扩展版本 1.6.2）
 
 本扩展未与 Amazon 或其关联公司建立任何隶属、赞助或官方合作关系。  
 This extension is not affiliated with, sponsored by, or endorsed by Amazon or its affiliates.
@@ -37,19 +37,24 @@ Amazon Product Insight 是一款在本地浏览器中运行的 Chrome 扩展（M
 
 - 所有解析与展示均在您的浏览器本地完成。
 - 扩展**不**将页面 HTML、抓取结果或任何个人信息发送到开发者服务器或其他远程服务。
-- 扩展本身**不**为数据采集目的建立网络请求；解析对象是您已在浏览器中打开的 Amazon 页面。
+- 扩展**不**包含远程代码执行、第三方分析 / 广告 SDK，也**不**向开发者后端上报使用数据。
+- 解析对象是您已在浏览器中打开的 Amazon 页面（DOM 读取，非批量爬虫）。
+- **预览主图例外：** 当结果中存在 `https://` 主图 URL 时，弹窗 `<img>` 会向 Amazon 图片 CDN（如 `media-amazon.com`）发起浏览器常规图片请求以便预览；请求带 `referrerpolicy=no-referrer`。若无主图或 URL 非 https，则不发起该请求。**扩展不会**为此上传您的抓取 JSON。
 
 ### 4. 本地存储
 
-扩展使用 Chrome 提供的 `chrome.storage.local` 在本地缓存最近一次抓取结果，存储键名为：
+扩展使用 Chrome 提供的 `chrome.storage.local` 在本地缓存最近一次**成功或部分成功**的抓取结果，存储键名为：
 
 - `lastScrapedData`
 
-该缓存仅保存在您的设备/浏览器配置中，用于在再次打开弹窗时恢复上次结果（例如同一商品页）。您可通过浏览器的扩展存储清理、卸载扩展等方式清除本地数据。
+失败结果**不会**写入该缓存。缓存仅保存在您的设备/浏览器配置中，用于在再次打开弹窗时恢复上次结果（同一 ASIN + 域名）。您可以：
+
+- 在扩展弹窗点击 **「清除本地缓存」**（会删除 `lastScrapedData`）
+- 或通过浏览器扩展存储清理、卸载扩展清除本地数据
 
 ### 5. 用户导出
 
-导出功能仅支持下载 **JSON** 文件到您选择的本地位置。是否导出、何时导出、如何使用导出文件，均由您自行决定。导出文件保存在您的设备上，本扩展不会代为上传。
+导出功能仅支持下载 **JSON** 文件到您选择的本地位置。导出内容可能包含页面上**公开可见**的商品字段与评论正文（用户撰写的公开评论）。是否导出、何时导出、如何使用导出文件，均由您自行决定。导出文件保存在您的设备上，本扩展不会代为上传。
 
 ### 6. 权限说明
 
@@ -110,19 +115,21 @@ The extension does **not** collect or store:
 
 - Parsing and display run entirely in your browser.
 - The extension does **not** send page HTML, scrape results, or personal information to a developer-operated server or other remote collection endpoint.
-- The extension itself does **not** perform network collection of product data; it works on the Amazon page you already opened.
+- The extension does **not** include remote code execution, third-party analytics/ads SDKs, or usage telemetry to a developer backend.
+- It works on the Amazon product page you already opened (DOM parse, not bulk crawling).
+- **Main-image preview exception:** when a result includes an `https://` main image URL, the popup `<img>` may request that image from Amazon’s image CDN (e.g. `media-amazon.com`) with `referrerpolicy=no-referrer`. No scrape JSON is uploaded for this.
 
 ### 4. Local storage
 
-The extension uses `chrome.storage.local` to cache the last scrape under the key:
+The extension uses `chrome.storage.local` to cache the last **successful or partial** scrape under:
 
 - `lastScrapedData`
 
-This cache stays on your device/browser profile and may be used to restore the last result when you reopen the popup. You can clear it by clearing extension storage or uninstalling the extension.
+Failed scrapes are **not** cached. Cache is keyed for restore by ASIN + domain. You can clear it via the in-popup **Clear local cache** control, browser extension storage wipe, or uninstall.
 
 ### 5. User export
 
-Export is **JSON download only**. Export is optional and initiated by you. Files are saved where you choose on your device; the extension does not upload them.
+Export is **JSON download only**. Exported files may include publicly visible product fields and on-page customer review text. Export is optional and initiated by you. Files stay on your device; the extension does not upload them.
 
 ### 6. Permissions
 
