@@ -1,10 +1,16 @@
 # Dependencies / build leftovers
 node_modules/
 web/node_modules/
+web/dist/
 dist/
 build/
 .vite/
 *.log
+.pack-stage/
+*.zip
+
+# Local worktrees
+.worktrees/
 
 # Env / local
 .env

@@ -1,11 +1,11 @@
 # Amazon Product Insight
 
-**Amazon Product Insight v1.6.1** · [最新 Release](https://github.com/earshore/Amazon-Scraper/releases/tag/v1.6.1) · 非 Amazon 官方产品
+**Amazon Product Insight v1.6.2** · [最新 Release](https://github.com/earshore/Amazon-Scraper/releases/tag/v1.6.2) · 非 Amazon 官方产品
 
 基于 Manifest V3 的 Chrome 扩展。打开亚马逊**商品详情页**后，一键在本地解析当前页面上的商品信息（标题、ASIN、价格、品牌、主图、卖点描述、页面可见评论等），并导出为 JSON，便于个人研究、文案整理或下游分析。
 
 - **扩展名称**：Amazon Product Insight
-- **当前版本**：`1.6.1`
+- **当前版本**：`1.6.2`
 - **导出 schema**：`1.3.0`（详见 [docs/SCHEMA.md](docs/SCHEMA.md)）
 - **工具栏标题**：分析此商品
 - **UI 语言**：中文
@@ -18,13 +18,15 @@
 
 | 模块 | 职责 |
 |------|------|
+| [`scraper/marketplaces.js`](scraper/marketplaces.js) | 域名白名单、语言前缀、ASIN 解析（manifest / core / popup 共用） |
 | [`scraper/core.js`](scraper/core.js) | 可注入的抓取引擎（`scrapeAmazonPage`）；扩展注入页面执行，也可在 Node 测试中 `require` |
 | [`popup.js`](popup.js) / [`popup.html`](popup.html) | **仅 UI**：页面提示、注入核心脚本、预览、导出 JSON、缓存 |
-| [`test/fixtures/`](test/fixtures) + `npm test` | jsdom 夹具测试，锁定状态语义与字段解析 |
+| [`test/fixtures/`](test/fixtures) + `npm test` | jsdom 夹具 + marketplaces 单测，锁定状态语义与字段解析 |
 | [`docs/QA-CHECKLIST.md`](docs/QA-CHECKLIST.md) | 手工发版 QA 清单 |
-| [`scripts/verify.mjs`](scripts/verify.mjs) | 打包一致性校验（版本号、架构、文档关键字等） |
+| [`scripts/verify.mjs`](scripts/verify.mjs) | 打包一致性校验（版本号、架构、host 三表一致等） |
+| [`scripts/pack-extension.mjs`](scripts/pack-extension.mjs) | 白名单运行时 zip（`npm run pack`） |
 
-抓取逻辑**不再**内联在 `popup.js` 中：弹窗通过 `chrome.scripting.executeScript` 以 `files: ["scraper/core.js"]` 注入，再调用全局 `scrapeAmazonPage`。
+抓取逻辑**不再**内联在 `popup.js` 中：弹窗通过 `chrome.scripting.executeScript` 以 `files: ["scraper/marketplaces.js", "scraper/core.js"]` 注入，再调用全局 `scrapeAmazonPage`。
 
 ---
 
@@ -73,13 +75,13 @@
 
 ### 推荐：从 GitHub Release 安装
 
-1. 打开 [v1.6.1 Release](https://github.com/earshore/Amazon-Scraper/releases/tag/v1.6.1) 页面。
-2. 下载 `amazon-product-insight-1.6.1.zip`。
+1. 打开 [v1.6.2 Release](https://github.com/earshore/Amazon-Scraper/releases/tag/v1.6.2) 页面。
+2. 下载 `amazon-product-insight-1.6.2.zip`。
 3. 解压到本地任意目录。
 4. 打开 Chrome，访问 `chrome://extensions/`。
 5. 打开右上角 **开发者模式**。
 6. 点击 **加载已解压的扩展程序**，选择解压后的文件夹（内含 `manifest.json`）。
-7. 确认扩展列表中出现 **Amazon Product Insight**（版本 **1.6.1**）。
+7. 确认扩展列表中出现 **Amazon Product Insight**（版本 **1.6.2**）。
 
 安装后可在工具栏固定扩展图标；悬停标题为 **分析此商品**。
 
@@ -92,11 +94,11 @@
 3. 打开右上角 **开发者模式**。
 4. 点击 **加载已解压的扩展程序**。
 5. 选择本仓库根目录（包含 `manifest.json` 的文件夹）。
-6. 确认扩展列表中出现 **Amazon Product Insight**（版本 **1.6.1**）。
+6. 确认扩展列表中出现 **Amazon Product Insight**（版本 **1.6.2**）。
 
 ### 私有交付打包
 
-官方 Release 中的 zip 已按下列规则构建，可直接从 [Release 页面](https://github.com/earshore/Amazon-Scraper/releases/tag/v1.6.1) 下载使用。
+官方 Release 中的 zip 已按下列规则构建，可直接从 [Release 页面](https://github.com/earshore/Amazon-Scraper/releases/tag/v1.6.2) 下载使用。
 
 自行交付给他人时，请打 **运行时 zip**，不要整仓含 `node_modules`：
 
@@ -104,12 +106,19 @@
 
 - `manifest.json`
 - `popup.html` / `popup.js`
-- `scraper/core.js`
+- `scraper/marketplaces.js` / `scraper/core.js`
 - `icons/icon16.png` / `icon48.png` / `icon128.png`
 
 **建议附带：** `README.md`、`PRIVACY.md`、`LICENSE`、`docs/SCHEMA.md`、`docs/QA-CHECKLIST.md`、`CHANGELOG.md`
 
-**不要放入 zip：** `node_modules/`、`.git/`、测试与开发工具（除非对方需要二次开发）
+**不要放入 zip：** `node_modules/`、`.git/`、`web/`（含其 `node_modules`/`dist`/`src`/`server`，**非扩展组成部分**）、`test/`、其他开发工具
+
+推荐一键打包（白名单）：
+
+```bash
+npm run pack
+# → dist/amazon-product-insight-1.6.2.zip
+```
 
 接收方：解压 → Chrome `chrome://extensions` → 开发者模式 → **加载已解压的扩展程序** → 选中解压目录。
 
@@ -214,38 +223,45 @@ amazon-scraper/
 ├── popup.html              # 弹窗 UI（中文）
 ├── popup.js                # UI 逻辑：页面提示、注入、预览、导出 JSON、缓存
 ├── scraper/
+│   ├── marketplaces.js     # 域名 / 语言 / ASIN 单一数据源
 │   └── core.js             # 抓取引擎（schema 1.3.0，可注入 + Node 测试）
 ├── icons/
 │   ├── icon16.png
 │   ├── icon48.png
 │   └── icon128.png
 ├── test/
-│   ├── fixtures/           # HTML 夹具（见 test/fixtures）
-│   └── scraper.test.mjs    # node:test + jsdom
+│   ├── fixtures/           # HTML 夹具
+│   ├── scraper.test.mjs
+│   └── marketplaces.test.mjs
 ├── scripts/
-│   └── verify.mjs          # 版本与架构一致性校验
+│   ├── verify.mjs          # 版本与架构一致性校验
+│   └── pack-extension.mjs  # 白名单运行时 zip
 ├── docs/
 │   ├── SCHEMA.md           # 导出 JSON 字段说明（schema 1.3.0）
 │   └── QA-CHECKLIST.md     # 发版手工 QA 清单
-├── package.json            # npm scripts：test / verify / check
-├── package-lock.json       # 依赖锁定
-├── PRIVACY.md              # 隐私政策
-├── LICENSE                 # MIT 许可证
-├── CHANGELOG.md            # 版本变更记录
+├── docs/ci/      # CI：npm run check
+├── package.json            # npm scripts：test / verify / pack / check
+├── package-lock.json
+├── PRIVACY.md
+├── LICENSE
+├── CHANGELOG.md
+├── CONTRIBUTING.md
 ├── README.md
 └── .gitignore
 ```
 
-**没有**独立的 `content.js` 常驻内容脚本；解析通过注入 `scraper/core.js` 完成。
+**没有**独立的 `content.js` 常驻内容脚本；解析通过注入 `scraper/marketplaces.js` + `scraper/core.js` 完成。
+
+> **`web/` 目录：** 若本地存在，属于**历史实验残留（非产品）**，源码不完整、与「仅本地解析」定位冲突。**不要**打入扩展 zip，也**不要**当作官方 companion。请忽略或删除本地副本。
 
 ### 权限说明
 
 | 权限 | 用途 |
 |------|------|
 | `activeTab` | 在用户点击扩展后访问当前活动标签页 |
-| `scripting` | 向当前页注入 `scraper/core.js` 并执行解析 |
-| `storage` | 本地缓存最近一次抓取结果（`lastScrapedData`） |
-| host_permissions | 上述亚马逊站点下的页面访问范围 |
+| `scripting` | 向当前页注入 `scraper/marketplaces.js` 与 `scraper/core.js` 并执行解析 |
+| `storage` | 本地缓存最近一次**成功/部分成功**抓取结果（`lastScrapedData`） |
+| host_permissions | 上述亚马逊站点（含 `*.domain` 与 apex 裸域）下的页面访问范围 |
 
 ---
 
@@ -283,7 +299,7 @@ npm run check            # 语法检查 + test + verify
 | [LICENSE](LICENSE) | MIT 许可证 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本变更记录 |
 | [docs/SCHEMA.md](docs/SCHEMA.md) | 导出 JSON schema `1.3.0` 字段说明 |
-| [docs/QA-CHECKLIST.md](docs/QA-CHECKLIST.md) | 发版 QA 清单（目标版本 1.6.1） |
+| [docs/QA-CHECKLIST.md](docs/QA-CHECKLIST.md) | 发版 QA 清单（目标版本 1.6.2） |
 
 ---
 

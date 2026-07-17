@@ -5,6 +5,36 @@ All notable changes to **Amazon Product Insight** (local Chrome MV3 extension) a
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.2] - 2026-07-17
+
+### Added
+
+- Shared `scraper/marketplaces.js` (domains, language prefixes, ASIN helpers) as single source of truth.
+- Runtime pack script `npm run pack` (whitelist zip, excludes `web/` / tests / node_modules).
+- CI workflow template `docs/ci/github-actions-check.yml` (copy to `.github/workflows/check.yml` to enable Actions).
+- Unit tests for marketplaces + expanded scraper fixtures (few bullets, invalid ASIN, empty reviews, productFacts, failed payload).
+- `CONTRIBUTING.md` for contributor / release workflow.
+- Popup version label, privacy footer link, `aria-live` status regions.
+- Apex host permissions (`https://amazon.TLD/*` in addition to `*.amazon.TLD`).
+
+### Changed
+
+- ASIN: validate 10-char pattern; invalid `#ASIN` no longer overrides URL ASIN; support `/gp/aw/d/`.
+- Feature bullets: trusted ID selectors (feature-bullets / productFacts / aboutThisItem) with relaxed area filter.
+- Price selectors prefer non-strikethrough buybox / apex prices.
+- Reviews: prefer review-list containers; cap at 20; drop bare global `.review` sweep.
+- Main image: pick largest from `data-a-dynamic-image` / `srcset`; HTTPS only.
+- Cache only `success` / `partial`; never restore or export `failed`.
+- Scrape button locked while in-flight (no concurrent inject races).
+- Clear cache requires confirmation.
+- `verify.mjs` reads version from manifest; asserts host_permissions ≡ marketplaces.
+- Docs / QA aligned with DE+en language allowlist and notes vs warnings.
+
+### Removed
+
+- Deprecated `mdPreview` id (renamed `resultPreview`).
+- Amazon Ember font-family name from popup CSS.
+
 ## [1.6.1] - 2026-07-17
 
 ### Removed

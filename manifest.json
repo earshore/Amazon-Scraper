@@ -1,9 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Amazon Product Insight",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "Locally parse the current Amazon product page (listing, price, visible reviews) and export structured JSON.",
   "author": "Aihang",
+  "minimum_chrome_version": "116",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -15,17 +16,28 @@
     "storage"
   ],
   "host_permissions": [
-    "https://*.amazon.de/*",
-    "https://*.amazon.fr/*",
-    "https://*.amazon.it/*",
-    "https://*.amazon.es/*",
-    "https://*.amazon.nl/*",
-    "https://*.amazon.se/*",
-    "https://*.amazon.pl/*",
     "https://*.amazon.com.be/*",
+    "https://amazon.com.be/*",
     "https://*.amazon.co.uk/*",
+    "https://amazon.co.uk/*",
     "https://*.amazon.ie/*",
-    "https://*.amazon.com/*"
+    "https://amazon.ie/*",
+    "https://*.amazon.de/*",
+    "https://amazon.de/*",
+    "https://*.amazon.fr/*",
+    "https://amazon.fr/*",
+    "https://*.amazon.it/*",
+    "https://amazon.it/*",
+    "https://*.amazon.es/*",
+    "https://amazon.es/*",
+    "https://*.amazon.nl/*",
+    "https://amazon.nl/*",
+    "https://*.amazon.se/*",
+    "https://amazon.se/*",
+    "https://*.amazon.pl/*",
+    "https://amazon.pl/*",
+    "https://*.amazon.com/*",
+    "https://amazon.com/*"
   ],
   "action": {
     "default_popup": "popup.html",
