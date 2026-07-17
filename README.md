@@ -1,4 +1,6 @@
-﻿# Amazon Product Insight
+# Amazon Product Insight
+
+**Amazon Product Insight v1.6.1** · [最新 Release](https://github.com/earshore/Amazon-Scraper/releases/tag/v1.6.1) · 非 Amazon 官方产品
 
 基于 Manifest V3 的 Chrome 扩展。打开亚马逊**商品详情页**后，一键在本地解析当前页面上的商品信息（标题、ASIN、价格、品牌、主图、卖点描述、页面可见评论等），并导出为 JSON，便于个人研究、文案整理或下游分析。
 
@@ -42,7 +44,7 @@
 - **导出 JSON**
 - **本地缓存**：`chrome.storage.local` 键 `lastScrapedData`，按 **ASIN + 域名** 恢复上次结果；预览展示缓存时间戳
 - **清除本地缓存**：一键清空 `lastScrapedData`
-- **语言不匹配提示**：页面语言与站点常见语言不一致时提示，可选择仍要分析
+- **语言不匹配提示**：当 `document.documentElement.lang` 不在该站点允许的语言前缀列表中时提示；可选择 **仍要分析**
 - **评论范围元数据**：`metadata.reviews_scope` 固定为 `"visible_dom_only"`
 
 ---
@@ -65,22 +67,38 @@
 
 ---
 
-## 安装（Chrome 加载已解压的扩展程序）
+## 安装
 
 本扩展本身**无需构建**即可加载；若要跑自动化测试，需 Node ≥ 18 并安装 devDependencies。
 
-1. 克隆或下载本仓库到本地。
+### 推荐：从 GitHub Release 安装
+
+1. 打开 [v1.6.1 Release](https://github.com/earshore/Amazon-Scraper/releases/tag/v1.6.1) 页面。
+2. 下载 `amazon-product-insight-1.6.1.zip`。
+3. 解压到本地任意目录。
+4. 打开 Chrome，访问 `chrome://extensions/`。
+5. 打开右上角 **开发者模式**。
+6. 点击 **加载已解压的扩展程序**，选择解压后的文件夹（内含 `manifest.json`）。
+7. 确认扩展列表中出现 **Amazon Product Insight**（版本 **1.6.1**）。
+
+安装后可在工具栏固定扩展图标；悬停标题为 **分析此商品**。
+
+### 开发：克隆仓库
+
+完整仓库包含测试与开发依赖（`test/`、`package.json` 等）。加载扩展时只需指向含 `manifest.json` 的目录（通常为仓库根目录）。
+
+1. 克隆本仓库到本地（仓库目录名可能为 `Amazon-Scraper` 或 `amazon-scraper`）。
 2. 打开 Chrome，访问 `chrome://extensions/`。
 3. 打开右上角 **开发者模式**。
 4. 点击 **加载已解压的扩展程序**。
 5. 选择本仓库根目录（包含 `manifest.json` 的文件夹）。
 6. 确认扩展列表中出现 **Amazon Product Insight**（版本 **1.6.1**）。
 
-安装后可在工具栏固定扩展图标；悬停标题为 **分析此商品**。
+### 私有交付打包
 
-### 私有交付打包（推荐）
+官方 Release 中的 zip 已按下列规则构建，可直接从 [Release 页面](https://github.com/earshore/Amazon-Scraper/releases/tag/v1.6.1) 下载使用。
 
-交付给他人时，请打 **运行时 zip**，不要整仓含 `node_modules`：
+自行交付给他人时，请打 **运行时 zip**，不要整仓含 `node_modules`：
 
 **必须包含：**
 
@@ -116,7 +134,7 @@
 
 ### 语言不匹配提示
 
-部分站点（如 `amazon.de`）可切换多种界面语言。若检测到页面语言与站点常见语言不一致，扩展会给出警告；可点击 **仍要分析** 继续，也可先切换回本地语言再抓取，以降低选择器失效风险。
+扩展根据当前 hostname 检查 `document.documentElement.lang` 是否属于该站点允许的语言前缀。例如：`amazon.de` 允许 `de` 与 `en`，因此德语站使用英文界面**不会**触发警告；`amazon.com` 仅允许 `en`。不在允许列表中时会给出提示；可点击 **仍要分析** 继续，也可先切换到允许的语言再抓取，以降低选择器失效风险。
 
 ---
 
@@ -170,7 +188,7 @@ Amz_{marketplace}_{ASIN}_{scrape_timestamp}.json
    改版或 A/B 测试可能导致选择器失效，出现字段漏抓；描述点相关问题会进入 **`warnings`** 并可能为 `partial`，无标题则为 `failed`。
 
 3. **多语言站点可能产生语言不匹配警告**  
-   界面语言与站点默认语言不一致时，部分节点文案与结构可能不同，影响解析成功率。
+   当 `document.documentElement.lang` 不在该 host 允许的语言前缀列表中时会提示（例如 `amazon.com` 仅允许 `en`；`amazon.de` 允许 `de` 与 `en`）。界面语言不在允许范围时，部分节点文案与结构可能不同，影响解析成功率。
 
 4. **仅限本地、当前标签页解析**  
    你必须先手动打开商品详情页；扩展通过 `activeTab` + `scripting` 注入逻辑读取当前页，不提供后台批量抓取、调度或代理池。
@@ -188,6 +206,8 @@ Amz_{marketplace}_{ASIN}_{scrape_timestamp}.json
 
 ## 项目结构
 
+仓库目录名可能为 `amazon-scraper` 或 `Amazon-Scraper`。
+
 ```text
 amazon-scraper/
 ├── manifest.json           # Manifest V3（名称、权限、图标、弹窗、工具栏标题）
@@ -200,7 +220,7 @@ amazon-scraper/
 │   ├── icon48.png
 │   └── icon128.png
 ├── test/
-│   ├── fixtures/           # HTML 夹具（us-full、de 无评论、minimal、no-title 等）
+│   ├── fixtures/           # HTML 夹具（见 test/fixtures）
 │   └── scraper.test.mjs    # node:test + jsdom
 ├── scripts/
 │   └── verify.mjs          # 版本与架构一致性校验
@@ -208,6 +228,7 @@ amazon-scraper/
 │   ├── SCHEMA.md           # 导出 JSON 字段说明（schema 1.3.0）
 │   └── QA-CHECKLIST.md     # 发版手工 QA 清单
 ├── package.json            # npm scripts：test / verify / check
+├── package-lock.json       # 依赖锁定
 ├── PRIVACY.md              # 隐私政策
 ├── LICENSE                 # MIT 许可证
 ├── CHANGELOG.md            # 版本变更记录
@@ -244,7 +265,7 @@ npm run verify           # 文件/版本/架构一致性
 npm run check            # 语法检查 + test + verify
 ```
 
-夹具覆盖：完整成功页、仅 notes（无可见评论）、partial（无卖点）、failed（无标题）等状态语义。
+夹具覆盖 success / notes-only / partial / failed（见 `test/fixtures`）。
 
 ### 文档约定
 
