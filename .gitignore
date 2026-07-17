@@ -17,3 +17,9 @@ Thumbs.db
 *.swp
 .idea/
 .vscode/
+
+# Local worktrees
+.worktrees/
+.pack-stage/
+*.zip
+
