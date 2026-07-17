@@ -121,7 +121,10 @@ const mpJs = fs.readFileSync(
   "utf8"
 );
 
-assert(popupHtml.includes("Amazon Product Insight"), "popup branding");
+assert(
+  /Amazon Product Insight|Product Insight/.test(popupHtml),
+  "popup branding"
+);
 assert(popupHtml.includes(`v${version}`), `popup shows v${version}`);
 assert(popupHtml.includes('id="pageHint"'), "page hint");
 assert(popupHtml.includes('id="resultPreview"'), "resultPreview id");

@@ -247,13 +247,13 @@ function listBlock(title, items, cssClass) {
 
 function showSuccessStatus(prod, metadata, options = {}) {
   const status = document.getElementById("status");
-  status.style.display = "block";
+  if (!status) return;
   resetStatusStyles();
+  status.style.display = "block";
 
   const warnings = prod.warnings || [];
   const notes = prod.notes || [];
   const errors = prod.errors || [];
-  const coverage = prod.coverage || {};
   const fromCache = Boolean(options.fromCache);
   const ts = formatTimestamp(metadata?.scrape_timestamp);
 
@@ -265,39 +265,36 @@ function showSuccessStatus(prod, metadata, options = {}) {
     return;
   }
 
-  const covLine = `标题 ${coverage.has_title ? "✓" : "✗"} · ASIN ${
-    coverage.has_asin ? "✓" : "✗"
-  } · 价格 ${coverage.has_price ? "✓" : "✗"} · 描述点 ${
-    coverage.bullet_count ?? 0
-  } · 评论 ${coverage.review_count ?? 0}`;
-
   const cacheLine = fromCache
-    ? `<div class="cache-line">缓存结果${ts ? ` · ${escapeHtml(ts)}` : ""} · 可重新分析以刷新</div>`
+    ? `<div class="cache-line">缓存${ts ? ` · ${escapeHtml(ts)}` : ""}</div>`
     : ts
-    ? `<div class="cache-line">抓取时间 ${escapeHtml(ts)}</div>`
+    ? `<div class="cache-line">${escapeHtml(ts)}</div>`
     : "";
 
   if (prod.scrape_status === "partial" || warnings.length > 0) {
     status.className = "partial";
     status.style.textAlign = "left";
     status.innerHTML = `
-      <div style="font-weight:bold;margin-bottom:4px;">部分成功 — 核心字段可用，存在质量告警</div>
-      <div style="font-size:12px;margin-bottom:6px;">${escapeHtml(covLine)}</div>
+      <div style="font-weight:600;margin-bottom:4px;">部分成功</div>
       ${listBlock("需要关注", warnings, "warn-block")}
-      ${listBlock("说明", notes, "note-block")}
+      ${notes.length ? listBlock("说明", notes, "note-block") : ""}
       ${cacheLine}
     `;
     return;
   }
 
+  // Full success: chips live in preview; hide status if nothing to say
   status.className = "success";
   status.style.textAlign = "left";
-  status.innerHTML = `
-    <div style="font-weight:bold;margin-bottom:4px;">分析完成</div>
-    <div style="font-size:12px;margin-bottom:6px;">${escapeHtml(covLine)}</div>
-    ${listBlock("说明", notes, "note-block")}
-    ${cacheLine}
-  `;
+  if (notes.length || cacheLine) {
+    status.innerHTML = `
+      ${notes.length ? listBlock("说明", notes, "note-block") : ""}
+      ${cacheLine}
+    `;
+  } else {
+    status.style.display = "none";
+    status.innerHTML = "";
+  }
 }
 
 /** Run after the next paint so the popup chrome is interactive first. */
