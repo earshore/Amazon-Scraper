@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Amazon Scraper",
-  "version": "1.3.6",
-  "description": "Simple Listing & Reviews Scraper for Amazon",
+  "name": "Amazon Product Insight",
+  "version": "1.5.0",
+  "description": "Locally parse the current Amazon product page (listing, price, visible reviews) and export structured JSON.",
   "author": "Aihang",
   "icons": {
     "16": "icons/icon16.png",
@@ -29,7 +29,7 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Scrape this product"
+    "default_title": "Analyze this product"
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"

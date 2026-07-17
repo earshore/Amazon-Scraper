@@ -1,0 +1,19 @@
+# Dependencies / build leftovers
+node_modules/
+web/node_modules/
+dist/
+build/
+.vite/
+*.log
+
+# Env / local
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/

@@ -3,7 +3,7 @@ let finalData = null;
 // 安全转义函数：防止 XSS 攻击
 function escapeHtml(unsafe) {
   if (!unsafe) return "";
-  return unsafe
+  return String(unsafe)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -11,67 +11,276 @@ function escapeHtml(unsafe) {
     .replace(/'/g, "&#039;");
 }
 
+function setExportButtonsVisible(visible) {
+  const display = visible ? "block" : "none";
+  ["downloadBtn", "copyJsonBtn"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = display;
+  });
+}
+
+function setLoaderVisible(visible) {
+  const loader = document.getElementById("loader");
+  if (loader) loader.style.display = visible ? "block" : "none";
+}
+
+function setScrapeEnabled(enabled) {
+  const btn = document.getElementById("scrapeBtn");
+  if (btn) btn.disabled = !enabled;
+}
+
+function resetStatusStyles() {
+  const status = document.getElementById("status");
+  status.style.background = "";
+  status.style.color = "";
+  status.style.border = "";
+  status.style.textAlign = "center";
+  status.className = "success";
+}
+
+function extractAsinFromUrl(url) {
+  if (!url) return null;
+  const m = String(url).match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i);
+  return m ? m[1].toUpperCase() : null;
+}
+
+function isAmazonHost(hostname) {
+  if (!hostname) return false;
+  return /(^|\.)amazon\.(com|de|fr|it|es|nl|se|pl|co\.uk|com\.be|ie)(\.|$)/i.test(
+    hostname
+  ) || hostname.includes("amazon.");
+}
+
+/**
+ * 根据当前标签页 URL 更新顶部引导区
+ * @returns {{ ok: boolean, asin: string|null, host: string, reason: string }}
+ */
+function updatePageHint(tab) {
+  const hint = document.getElementById("pageHint");
+  const url = tab?.url || "";
+  let host = "";
+  try {
+    host = url ? new URL(url).hostname : "";
+  } catch {
+    host = "";
+  }
+
+  const asin = extractAsinFromUrl(url);
+  const onAmazon = isAmazonHost(host);
+
+  if (!url || url.startsWith("chrome://") || url.startsWith("edge://") || url.startsWith("about:")) {
+    hint.className = "page-hint warn";
+    hint.style.display = "block";
+    hint.innerHTML =
+      "<strong>无法在此页面使用</strong>请先打开亚马逊<strong>商品详情页</strong>（URL 含 <code>/dp/ASIN</code>），再点击「分析此页面」。";
+    setScrapeEnabled(false);
+    return { ok: false, asin: null, host, reason: "restricted" };
+  }
+
+  if (!onAmazon) {
+    hint.className = "page-hint warn";
+    hint.style.display = "block";
+    hint.innerHTML =
+      "<strong>当前不是亚马逊页面</strong>本扩展仅在支持的亚马逊站点商品详情页工作。请打开例如 amazon.com / amazon.de 等站点的商品页。";
+    setScrapeEnabled(false);
+    return { ok: false, asin: null, host, reason: "not_amazon" };
+  }
+
+  if (!asin) {
+    hint.className = "page-hint warn";
+    hint.style.display = "block";
+    hint.innerHTML =
+      "<strong>请打开商品详情页</strong>已检测到亚马逊站点，但当前页不是商品详情（缺少 <code>/dp/ASIN</code> 或 <code>/gp/product/ASIN</code>）。搜索结果页、购物车等页面无法分析。";
+    setScrapeEnabled(false);
+    return { ok: false, asin: null, host, reason: "not_product" };
+  }
+
+  hint.className = "page-hint ok";
+  hint.style.display = "block";
+  hint.innerHTML = `<strong>已就绪</strong>站点 <code>${escapeHtml(
+    host
+  )}</code> · ASIN <code>${escapeHtml(asin)}</code> · 点击「分析此页面」开始。`;
+  setScrapeEnabled(true);
+  return { ok: true, asin, host, reason: "ready" };
+}
+
+function getExportBasename() {
+  const product = finalData?.products?.[0] || {};
+  let timestampStr = String(Date.now());
+  if (finalData?.metadata?.scrape_timestamp) {
+    timestampStr = finalData.metadata.scrape_timestamp
+      .replace(/[:.]/g, "-")
+      .slice(0, 19);
+  }
+  const marketplace = finalData?.metadata?.marketplace || "Unknown";
+  return `Amz_${marketplace}_${product.asin || "Unknown"}_${timestampStr}`;
+}
+
+function downloadTextFile(content, fileName, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 100);
+}
+
+function flashStatusMessage(message) {
+  const status = document.getElementById("status");
+  const prev = {
+    html: status.innerHTML,
+    display: status.style.display,
+    className: status.className,
+    background: status.style.background,
+    color: status.style.color,
+    border: status.style.border,
+    textAlign: status.style.textAlign,
+  };
+  status.style.display = "block";
+  status.className = "success";
+  status.style.background = "";
+  status.style.color = "";
+  status.style.border = "";
+  status.style.textAlign = "center";
+  status.innerText = message;
+  setTimeout(() => {
+    status.innerHTML = prev.html;
+    status.style.display = prev.display;
+    status.className = prev.className;
+    status.style.background = prev.background;
+    status.style.color = prev.color;
+    status.style.border = prev.border;
+    status.style.textAlign = prev.textAlign;
+  }, 1500);
+}
+
+function showSuccessStatus(prod) {
+  const status = document.getElementById("status");
+  status.style.display = "block";
+  resetStatusStyles();
+
+  const warnings = prod.warnings || [];
+  const coverage = prod.coverage || {};
+
+  if (prod.scrape_status === "partial" || warnings.length > 0) {
+    status.className = "partial";
+    status.style.textAlign = "left";
+    const warnHtml = warnings
+      .map((w) => `<li>${escapeHtml(w)}</li>`)
+      .join("");
+    status.innerHTML = `
+      <div style="font-weight:bold;margin-bottom:4px;">⚠️ 部分成功</div>
+      <div style="font-size:12px;margin-bottom:6px;">
+        标题 ${coverage.has_title ? "✓" : "✗"} ·
+        ASIN ${coverage.has_asin ? "✓" : "✗"} ·
+        价格 ${coverage.has_price ? "✓" : "✗"} ·
+        描述点 ${coverage.bullet_count ?? 0} ·
+        评论 ${coverage.review_count ?? 0}
+      </div>
+      ${warnings.length ? `<ul style="margin:0;padding-left:18px;font-size:12px;">${warnHtml}</ul>` : ""}
+    `;
+    return;
+  }
+
+  status.className = "success";
+  status.innerText = `✅ 分析完成（描述点 ${coverage.bullet_count ?? 0} · 评论 ${
+    coverage.review_count ?? 0
+  }）`;
+}
+
+function handleScrapeResult(result) {
+  finalData = result;
+  chrome.storage.local.set({ lastScrapedData: finalData });
+
+  if (!finalData || !finalData.products || finalData.products.length === 0) {
+    showError("解析失败", "未找到商品信息");
+    return;
+  }
+
+  const prod = finalData.products[0];
+
+  if (prod.scrape_status === "failed") {
+    let summary = "解析失败";
+    let detail = prod.error || "未能识别商品信息。";
+    if (detail.includes("Properties")) summary = "页面结构变更";
+    const warnExtra =
+      prod.warnings && prod.warnings.length
+        ? " " + prod.warnings.join("；")
+        : "";
+    showError(summary, detail + warnExtra);
+    return;
+  }
+
+  setExportButtonsVisible(true);
+  document.getElementById("mdPreview").style.display = "block";
+  showSuccessStatus(prod);
+  renderPreview(prod, finalData.metadata);
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const ctx = updatePageHint(tab);
 
-    if (!tab || !tab.url) return;
-
-    // 1. 获取当前页面的 ASIN 和 Host
-    const urlObj = new URL(tab.url);
-    const currentHost = urlObj.hostname;
-    const asinMatch = tab.url.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/);
-    const currentAsin = asinMatch ? asinMatch[1] : null;
-
-    if (!currentAsin) return; // 非商品页不恢复
+    if (!ctx.ok || !ctx.asin) return;
 
     chrome.storage.local.get(["lastScrapedData"], (result) => {
       if (result.lastScrapedData) {
         const cachedData = result.lastScrapedData;
 
-        // 2. 校验缓存数据有效性
         if (cachedData && cachedData.products && cachedData.products.length > 0) {
           const cachedProduct = cachedData.products[0];
           const cachedMetadata = cachedData.metadata || {};
 
-          // 3. 关键校验：ASIN 和 域名必须完全一致
-          // 注意：metadata.domain 是之前抓取时的 window.location.hostname
           if (
-            cachedProduct.asin === currentAsin &&
-            cachedMetadata.domain === currentHost
+            cachedProduct.asin === ctx.asin &&
+            cachedMetadata.domain === ctx.host
           ) {
             finalData = cachedData;
+            setExportButtonsVisible(true);
+            document.getElementById("mdPreview").style.display = "block";
+            showSuccessStatus(cachedProduct);
+            renderPreview(cachedProduct, cachedMetadata);
             const status = document.getElementById("status");
-            const mdPreview = document.getElementById("mdPreview");
-            const downloadBtn = document.getElementById("downloadBtn");
-
-            status.style.display = "block";
-            status.className = "success";
-            status.innerText = "✅ 上次分析结果 (缓存)";
-            mdPreview.style.display = "block";
-            downloadBtn.style.display = "block";
-            renderPreview(cachedProduct);
-          } else {
-            // 如果不匹配，静默清除旧缓存（可选，或者保留但不显示）
-            // console.log("Cache mismatch: ASIN or Host differs.");
+            if (
+              cachedProduct.scrape_status !== "partial" &&
+              !(cachedProduct.warnings && cachedProduct.warnings.length)
+            ) {
+              status.className = "success";
+              status.style.display = "block";
+              status.innerText = "✅ 上次分析结果 (缓存)";
+            } else {
+              const tip = document.createElement("div");
+              tip.style.fontSize = "11px";
+              tip.style.marginTop = "6px";
+              tip.textContent = "（缓存结果）";
+              status.appendChild(tip);
+            }
           }
         }
       }
     });
   } catch (err) {
     console.error("Auto-restore failed:", err);
+    const hint = document.getElementById("pageHint");
+    if (hint) {
+      hint.className = "page-hint warn";
+      hint.style.display = "block";
+      hint.innerHTML =
+        "<strong>无法读取当前标签页</strong>请刷新亚马逊商品页后重试。";
+    }
+    setScrapeEnabled(false);
   }
 });
 
 document.getElementById("scrapeBtn").addEventListener("click", async () => {
   const status = document.getElementById("status");
-  const mdPreview = document.getElementById("mdPreview");
-  const downloadBtn = document.getElementById("downloadBtn");
 
-  // 初始化状态
+  resetStatusStyles();
   status.style.display = "block";
-  status.className = "success";
-  status.style.background = ""; // 清除可能的警告色
   status.innerText = "🔍 正在检查环境...";
 
   try {
@@ -80,12 +289,27 @@ document.getElementById("scrapeBtn").addEventListener("click", async () => {
       currentWindow: true,
     });
 
-    // --- 第一步：环境与语言校验 ---
+    if (!tab || !tab.id) {
+      showError("无法获取标签页", "请在亚马逊商品页打开本扩展。");
+      return;
+    }
+
+    const ctx = updatePageHint(tab);
+    if (!ctx.ok) {
+      showError(
+        "页面不支持",
+        ctx.reason === "not_product"
+          ? "请打开包含 /dp/ASIN 的商品详情页后再分析。"
+          : "请在支持的亚马逊商品详情页使用本扩展。"
+      );
+      return;
+    }
+
     const checkResults = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: () => {
         return {
-          lang: document.documentElement.lang.toLowerCase(),
+          lang: (document.documentElement.lang || "").toLowerCase(),
           host: window.location.hostname,
           isAmazon: window.location.hostname.includes("amazon"),
         };
@@ -94,7 +318,11 @@ document.getElementById("scrapeBtn").addEventListener("click", async () => {
 
     const { lang, host, isAmazon } = checkResults[0].result;
 
-    // 定义站点与语言的对应关系
+    if (!isAmazon) {
+      showError("页面不支持", "请在亚马逊商品详情页使用本扩展。");
+      return;
+    }
+
     const languageMap = [
       { domain: "amazon.com.be", prefixes: ["fr", "nl", "en"] },
       { domain: "amazon.co.uk", prefixes: ["en"] },
@@ -109,42 +337,37 @@ document.getElementById("scrapeBtn").addEventListener("click", async () => {
       { domain: "amazon.com", prefixes: ["en"] },
     ];
 
-    // 查找当前站点应该使用的语言前缀
-    const expectedLang = languageMap.find((item) =>
-      host === item.domain || host.endsWith(`.${item.domain}`)
+    const expectedLang = languageMap.find(
+      (item) => host === item.domain || host.endsWith(`.${item.domain}`)
     );
-    const currentExpectedPrefix = expectedLang
-      ? expectedLang.prefixes
-      : null;
+    const currentExpectedPrefix = expectedLang ? expectedLang.prefixes : null;
 
-    // 如果语言不匹配（例如在 .de 却不是以 de 开头）
     if (
       currentExpectedPrefix &&
       !currentExpectedPrefix.some((prefix) => lang.startsWith(prefix))
     ) {
       showWarning(
         "语言设置不匹配",
-        `检测到您在 <b>${host}</b> 使用了 <b>${lang}</b>。建议切换回本地语言以避免过滤失效。`,
-        () => startScraping(tab) // 用户点击“仍要抓取”后执行
+        `检测到您在 ${host} 使用了 ${lang}。建议切换回本地语言以避免过滤失效。`,
+        () => startScraping(tab)
       );
       return;
     }
 
-    // 环境正常，直接开始抓取
     startScraping(tab);
   } catch (err) {
     showError("插件运行错误", err.message);
   }
 });
 
-// --- 封装正式抓取逻辑 ---
 function startScraping(tab) {
   const status = document.getElementById("status");
-  const mdPreview = document.getElementById("mdPreview");
-  const downloadBtn = document.getElementById("downloadBtn");
 
-  status.style.background = ""; // 恢复正常背景
+  resetStatusStyles();
+  status.style.display = "block";
   status.innerText = "🔍 正在解析商品与评论...";
+  setLoaderVisible(true);
+  setExportButtonsVisible(false);
 
   chrome.scripting.executeScript(
     {
@@ -152,168 +375,227 @@ function startScraping(tab) {
       func: scrapeAmazonLogic,
     },
     (results) => {
+      setLoaderVisible(false);
+
       if (chrome.runtime.lastError || !results || !results[0]) {
-        showError("连接失败", "无法访问页面内容。");
+        showError(
+          "连接失败",
+          chrome.runtime.lastError?.message || "无法访问页面内容。"
+        );
         return;
       }
 
-      finalData = results[0].result;
-      chrome.storage.local.set({ lastScrapedData: finalData });
-
-      // 【注意】结构变更兼容：检查 products 数组
-      if (!finalData.products || finalData.products.length === 0) {
-        showError("解析失败", "未找到商品信息");
-        return;
-      }
-
-      const prod = finalData.products[0];
-
-      if (prod.scrape_status === "failed") {
-        let summary = "解析失败";
-        let detail = prod.error || "未能识别商品信息。";
-        if (detail.includes("Properties")) summary = "页面结构变更";
-        showError(summary, detail);
-        return;
-      }
-
-      status.className = "success";
-      status.innerText = "✅ 分析完成";
-      mdPreview.style.display = "block";
-      downloadBtn.style.display = "block";
-      renderPreview(prod);
+      handleScrapeResult(results[0].result);
     }
   );
 }
 
-// --- 辅助函数：显示警告（带继续按钮） ---
 function showWarning(summary, detail, onContinue) {
   const status = document.getElementById("status");
   status.style.display = "block";
-  status.style.background = "#FFF3CD"; // 警告黄
+  status.style.background = "#FFF3CD";
   status.style.color = "#856404";
   status.style.border = "1px solid #FFEEBA";
   status.style.textAlign = "left";
   status.innerHTML = `
-        <div style="font-weight:bold; margin-bottom:4px;">⚠️ ${summary}</div>
-        <div style="font-size:12px; margin-bottom:8px;">${detail}</div>
-        <button id="forceContinueBtn" style="background:#856404; color:white; border:none; padding:4px 8px; border-radius:3px; cursor:pointer; font-size:11px;">坚持抓取</button>
+        <div style="font-weight:bold; margin-bottom:4px;">⚠️ ${escapeHtml(
+          summary
+        )}</div>
+        <div style="font-size:12px; margin-bottom:8px;">${escapeHtml(
+          detail
+        )}</div>
+        <button id="forceContinueBtn" type="button" style="background:#856404; color:white; border:none; padding:4px 8px; border-radius:3px; cursor:pointer; font-size:11px;">坚持抓取</button>
     `;
 
   document.getElementById("forceContinueBtn").onclick = onContinue;
 }
 
-// --- 辅助函数：显示错误 ---
 function showError(summary, detail) {
+  setLoaderVisible(false);
   const status = document.getElementById("status");
   status.style.display = "block";
   status.style.background = "#FFF5F5";
   status.style.color = "#C53030";
   status.style.border = "1px solid #FEB2B2";
-  status.innerHTML = `<strong>❌ ${summary}</strong>: <div style="font-size:12px">${detail}</div>`;
+  status.style.textAlign = "left";
+  status.className = "";
+  status.innerHTML = `<strong>❌ ${escapeHtml(
+    summary
+  )}</strong><div style="font-size:12px;margin-top:4px;">${escapeHtml(
+    detail
+  )}</div>`;
 }
 
-// 渲染函数：加入安全转义
-function renderPreview(prod) {
+function renderPreview(prod, metadata = {}) {
   const preview = document.getElementById("mdPreview");
+  const coverage = prod.coverage || {};
+  const warnings = prod.warnings || [];
+  const bullets = prod.feature_bullets || [];
+  const reviews = prod.customer_reviews || [];
+  const scope =
+    metadata.reviews_scope || "visible_dom_only";
 
-  // 转义列表内容
-  let bulletsHtml = prod.feature_bullets
-    .map((b) => `<li>${escapeHtml(b)}</li>`)
-    .join("");
+  const chip = (label, state) =>
+    `<span class="coverage-chip ${state}">${escapeHtml(label)}</span>`;
 
-  // 只有在有评论时才生成评论 HTML
+  const coverageHtml = `
+    <div class="coverage-bar">
+      ${chip(
+        `标题 ${coverage.has_title ? "✓" : "✗"}`,
+        coverage.has_title ? "ok" : "bad"
+      )}
+      ${chip(
+        `ASIN ${coverage.has_asin ? "✓" : "✗"}`,
+        coverage.has_asin ? "ok" : "bad"
+      )}
+      ${chip(
+        `价格 ${coverage.has_price ? "✓" : "✗"}`,
+        coverage.has_price ? "ok" : "warn"
+      )}
+      ${chip(
+        `品牌 ${coverage.has_brand ? "✓" : "✗"}`,
+        coverage.has_brand ? "ok" : "warn"
+      )}
+      ${chip(
+        `主图 ${coverage.has_main_image ? "✓" : "✗"}`,
+        coverage.has_main_image ? "ok" : "warn"
+      )}
+      ${chip(
+        `描述点 ${coverage.bullet_count ?? bullets.length}`,
+        (coverage.bullet_count ?? bullets.length) >= 3
+          ? "ok"
+          : (coverage.bullet_count ?? bullets.length) > 0
+          ? "warn"
+          : "bad"
+      )}
+      ${chip(
+        `评论 ${coverage.review_count ?? reviews.length}`,
+        (coverage.review_count ?? reviews.length) > 0 ? "ok" : "warn"
+      )}
+      ${chip(
+        `状态 ${prod.scrape_status || "-"}`,
+        prod.scrape_status === "success"
+          ? "ok"
+          : prod.scrape_status === "partial"
+          ? "warn"
+          : "bad"
+      )}
+    </div>
+  `;
+
+  const warningsHtml =
+    warnings.length > 0
+      ? `<ul class="warnings-list">${warnings
+          .map((w) => `<li>${escapeHtml(w)}</li>`)
+          .join("")}</ul>`
+      : "";
+
+  const thumbHtml = prod.main_image
+    ? `<img class="thumb" src="${escapeHtml(
+        prod.main_image
+      )}" alt="" referrerpolicy="no-referrer" />`
+    : "";
+
+  const priceLine = prod.price
+    ? `<div class="meta-row">价格: ${escapeHtml(prod.price)}</div>`
+    : "";
+  const brandLine = prod.brand
+    ? `<div class="meta-row">品牌: ${escapeHtml(prod.brand)}</div>`
+    : "";
+
+  let bulletsHtml = bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join("");
+  if (!bulletsHtml) {
+    bulletsHtml =
+      '<li style="color:#565959;font-style:italic;list-style:none;margin-left:-20px;">（未识别到描述点）</li>';
+  }
+
   let reviewsHtml = "";
-  if (prod.customer_reviews && prod.customer_reviews.length > 0) {
-    reviewsHtml = prod.customer_reviews
+  if (reviews.length > 0) {
+    reviewsHtml = reviews
       .map(
         (r) => `
             <div class="review-card">
                 <div style="display: flex; align-items: center; margin-bottom: 4px;">
                     <div style="display: flex; color: #DE7921; font-size: 15px; margin-right: 8px;">
                         ${Array.from(
-          { length: 5 },
-          (_, i) =>
-            `<span style="margin-right: -1px;">${i < r.star_rating
-              ? "★"
-              : '<span style="color:#ccc">☆</span>'
-            }</span>`
-        ).join("")}
+                          { length: 5 },
+                          (_, i) =>
+                            `<span style="margin-right: -1px;">${
+                              i < r.star_rating
+                                ? "★"
+                                : '<span style="color:#ccc">☆</span>'
+                            }</span>`
+                        ).join("")}
                     </div>
                     <span style="font-weight: 700; color: #0F1111; font-size: 14px;">${escapeHtml(
-          r.headline
-        )}</span>
+                      r.headline
+                    )}</span>
                 </div>
                 <div style="color: #565959; font-size: 13px;">
                     ${escapeHtml(r.review_date)}
-                                        
                 </div>
                 <div style="color: #0F1111; font-size: 14px; margin-top: 8px;">${escapeHtml(
-          r.body
-        )}</div>
+                  r.body
+                )}</div>
             </div>
         `
       )
       .join("");
   } else {
     reviewsHtml =
-      '<p style="color: #565959; font-size: 13px; font-style: italic;">No reviews found for this product.</p>';
+      '<p style="color: #565959; font-size: 13px; font-style: italic;">当前页未识别到评论（仅抓取页面可见部分）。</p>';
   }
 
   preview.innerHTML = `
+        ${coverageHtml}
+        ${warningsHtml}
+        ${thumbHtml}
         <div style="font-size: 18px; font-weight: 700; color: #0F1111;">${escapeHtml(
-    prod.productTitle
-  )}</div>
-        <div style="font-size: 12px; color: #565959; margin-bottom: 15px;">ASIN: ${escapeHtml(
-    prod.asin
-  )}</div>
-        <div style="font-weight: 700; border-bottom: 2px solid #eee;">About this item</div>
+          prod.productTitle
+        )}</div>
+        <div class="meta-row">ASIN: ${escapeHtml(prod.asin)}</div>
+        ${brandLine}
+        ${priceLine}
+        <div style="font-weight: 700; border-bottom: 2px solid #eee; margin-top: 10px;">商品卖点</div>
         <ul style="font-size: 13px; padding-left: 20px;">${bulletsHtml}</ul>
-        <div style="font-weight: 700; margin-top:15px; border-bottom: 2px solid #eee;">Reviews (${prod.customer_reviews.length})</div>
+        <div style="font-weight: 700; margin-top:15px; border-bottom: 2px solid #eee;">评论 (${
+          reviews.length
+        })</div>
         ${reviewsHtml}
+        <div class="scope-note">评论范围: <code>${escapeHtml(
+          scope
+        )}</code> — 仅包含商品详情页当前 DOM 中可见的评论，不是全站/全部分页评论。数据仅在本地解析，不上传服务器。</div>
     `;
 }
 
-// 下载功能
 document.getElementById("downloadBtn").addEventListener("click", () => {
-  const status = document.getElementById("status");
-
-  // 1. 校验数据是否存在
   if (!finalData || !finalData.products || !finalData.products[0]) {
     showError("下载失败", "没有可供下载的数据，请重新抓取。");
     return;
   }
 
   try {
-    const product = finalData.products[0];
-
-    // 2. 优先使用 metadata 中的时间戳，如果没有则生成新的
-    let timestampStr = new Date().getTime();
-    if (finalData.metadata && finalData.metadata.scrape_timestamp) {
-      // 将 ISO 时间处理为文件名友好格式 (例如 2026-01-01T12-00-00)
-      timestampStr = finalData.metadata.scrape_timestamp.replace(/[:.]/g, "-").slice(0, 19);
-    }
-
-    const marketplace = finalData.metadata?.marketplace || "Unknown";
-    const fileName = `Amz_${marketplace}_${product.asin || "Unknown"}_${timestampStr}.json`;
-
-    const blob = new Blob([JSON.stringify(finalData, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = fileName;
-
-    // 3. 兼容性点击处理
-    document.body.appendChild(a); // 部分浏览器需要将元素加入 DOM 才能触发
-    a.click();
-    document.body.removeChild(a);
-
-    // 释放内存
-    setTimeout(() => URL.revokeObjectURL(url), 100);
+    downloadTextFile(
+      JSON.stringify(finalData, null, 2),
+      `${getExportBasename()}.json`,
+      "application/json"
+    );
   } catch (err) {
     showError("下载出错", err.message);
+  }
+});
+
+document.getElementById("copyJsonBtn").addEventListener("click", async () => {
+  if (!finalData || !finalData.products || !finalData.products[0]) {
+    showError("复制失败", "没有可供复制的数据，请重新抓取。");
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(finalData, null, 2));
+    flashStatusMessage("✅ 已复制 JSON 到剪贴板");
+  } catch (err) {
+    showError("复制失败", err.message || "浏览器拒绝访问剪贴板。");
   }
 });
 
@@ -323,7 +605,9 @@ document.getElementById("downloadBtn").addEventListener("click", () => {
  */
 function scrapeAmazonLogic() {
   try {
-    // --- 1. 配置：多重备选选择器 (基于你提供的增强版) ---
+    const SCHEMA_VERSION = "1.2.0";
+    const REVIEWS_SCOPE = "visible_dom_only";
+
     const config = {
       productTitle: [
         "#productTitle",
@@ -332,12 +616,38 @@ function scrapeAmazonLogic() {
         "span#productTitle",
         "#titleSection #title",
       ],
+      price: [
+        "#corePrice_feature_div .a-price .a-offscreen",
+        "#corePriceDisplay_desktop_feature_div .a-price .a-offscreen",
+        "#priceblock_ourprice",
+        "#priceblock_dealprice",
+        "#priceblock_saleprice",
+        "#price_inside_buybox",
+        ".a-price.aok-align-center .a-offscreen",
+        "#tp_price_block_total_price_ww .a-offscreen",
+        "span.a-price.a-text-price.a-size-medium.apexPriceToPay .a-offscreen",
+        "#sns-base-price .a-offscreen",
+      ],
+      brand: [
+        "#bylineInfo",
+        "a#brand",
+        "#brand",
+        "tr.po-brand td.a-span9 span",
+        "#productOverview_feature_div tr.po-brand span.po-break-word",
+      ],
+      mainImage: [
+        "#landingImage",
+        "#imgTagWrapperId img",
+        "#main-image-container img",
+        "#imageBlock img",
+        "img#imgBlkFront",
+      ],
       bulletPoints: [
-        "#feature-bullets ul li .a-list-item", // 经典版最准
-        "#productFactsDesktop_feature_div ul li", // 现代版最准
-        ".a-unordered-list.a-vertical.a-spacing-small li span.a-list-item", // 德国站等欧洲站点
-        ".a-unordered-list.a-vertical li span.a-list-item", // 通用备选
-        ".a-unordered-list.a-vertical li", // 最后兜底
+        "#feature-bullets ul li .a-list-item",
+        "#productFactsDesktop_feature_div ul li",
+        ".a-unordered-list.a-vertical.a-spacing-small li span.a-list-item",
+        ".a-unordered-list.a-vertical li span.a-list-item",
+        ".a-unordered-list.a-vertical li",
       ],
       reviewContainers: [
         '[data-hook="review"]',
@@ -371,116 +681,78 @@ function scrapeAmazonLogic() {
         ".review-title-content",
         ".review-title",
       ],
-      reviewRating: [
-        '[data-hook="review-star-rating"]',
-        '[data-hook="cmps-review-star-rating"]',
-        ".review-rating",
-        "i.a-icon-star",
-      ],
     };
 
-    // ============================================================
-    // 1. 新增：Marketplace 识别逻辑
-    // ============================================================
+    const marketplaceEntries = [
+      ["amazon.com.be", "BE"],
+      ["amazon.co.uk", "UK"],
+      ["amazon.ie", "IE"],
+      ["amazon.de", "DE"],
+      ["amazon.fr", "FR"],
+      ["amazon.it", "IT"],
+      ["amazon.es", "ES"],
+      ["amazon.nl", "NL"],
+      ["amazon.se", "SE"],
+      ["amazon.pl", "PL"],
+      ["amazon.com", "US"],
+    ];
+
     const host = window.location.hostname;
-    const marketplaceMap = {
-      "amazon.de": "DE",
-      "amazon.fr": "FR",
-      "amazon.it": "IT",
-      "amazon.es": "ES",
-      "amazon.nl": "NL",
-      "amazon.se": "SE",
-      "amazon.pl": "PL",
-      "amazon.com.be": "BE",
-      "amazon.co.uk": "UK",
-      "amazon.com": "US",
-      "amazon.ie": "IE"
-    };
-
     let marketplace = "OTHER";
-    for (const [domain, code] of Object.entries(marketplaceMap)) {
-      if (host.includes(domain)) {
+    for (const [domain, code] of marketplaceEntries) {
+      if (host === domain || host.endsWith("." + domain)) {
         marketplace = code;
         break;
       }
     }
 
-    // ============================================================
-    // 2. 新增：Metadata 所需的语言与时间戳
-    // ============================================================
     const now = new Date().toISOString();
 
-    // 简单的语言映射表
-    const langCode = document.documentElement.lang.split('-')[0].toLowerCase();
+    const langCode = (document.documentElement.lang || "en")
+      .split("-")[0]
+      .toLowerCase();
     const fullLangMap = {
-      "de": "German", "en": "English", "fr": "French",
-      "it": "Italian", "es": "Spanish", "nl": "Dutch",
-      "pl": "Polish", "sv": "Swedish", "be": "French",
-      "ie": "English", "tr": "Turkish", "us": "English",
-      "pt": "Portuguese", "ja": "Japanese", "zh": "Chinese"
+      de: "German",
+      en: "English",
+      fr: "French",
+      it: "Italian",
+      es: "Spanish",
+      nl: "Dutch",
+      pl: "Polish",
+      sv: "Swedish",
+      be: "French",
+      ie: "English",
+      tr: "Turkish",
+      us: "English",
+      pt: "Portuguese",
+      ja: "Japanese",
+      zh: "Chinese",
     };
-    // 如果映射不到，首字母大写返回 (例如 "zh" -> "Zh")
-    const language = fullLangMap[langCode] || (langCode.charAt(0).toUpperCase() + langCode.slice(1));
+    const language =
+      fullLangMap[langCode] ||
+      langCode.charAt(0).toUpperCase() + langCode.slice(1);
 
-    // --- 2. 黑名单正则 ---
     const BLACKLIST_REGEX = [
       /von 5 Sternen|out of 5 stars|étoiles sur 5/i,
       /Verifizierter Kauf|Verified Purchase/i,
       /Sponsored|Gesponsert/i,
-      // 注意：删除了可能会误杀标题的 "Nützlich", "Löschen" 等词汇
     ];
 
-    // --- 3. 跨语言日期解析引擎 (欧洲全站点支持) ---
-    const parseEuropeanDate = (text) => {
-      if (!text) return "";
-      // 清除介词 (如 "on", "am", "le", "il", "el", "op", "den", "w dniu")
-      const cleanStr = text
-        .replace(/^.*?(on|am|le|il|el|op|den|dnia|w dniu)\s+/i, "")
-        .trim();
-      // 月份映射
-      const months = {
-        jan: "01", feb: "02", mar: "03", apr: "04", mai: "05", may: "05", jun: "06",
-        jul: "07", aug: "08", sep: "09", okt: "10", oct: "10", nov: "11", dez: "12",
-        dec: "12", januar: "01", februar: "02", märz: "03", april: "04", juni: "06",
-        juli: "07", august: "08", september: "09", oktober: "10", november: "11",
-        dezember: "12", janvier: "01", février: "02", mars: "03", mai: "05", juin: "06",
-        juillet: "07", août: "08", octobre: "10", novembre: "11", décembre: "12",
-        gennaio: "01", febbraio: "02", marzo: "03", maggio: "05", giugno: "06",
-        luglio: "07", agosto: "08", settembre: "09", ottobre: "10", novembre: "11",
-        dicembre: "12", enero: "01", febrero: "02", marzo: "03", mayo: "05",
-        junio: "06", julio: "07", agosto: "08", septiembre: "09", octubre: "10",
-        noviembre: "11", diciembre: "12", stycznia: "01", lutego: "02", marca: "03",
-        kwietnia: "04", maja: "05", czerwca: "06", lipca: "07", sierpnia: "08",
-        września: "09", października: "10", listopada: "11", grudnia: "12",
-      };
-      // 查找月份
-      let foundMonth = "01";
-      for (const [name, num] of Object.entries(months)) {
-        if (cleanStr.toLowerCase().includes(name)) {
-          foundMonth = num;
-          break;
-        }
-      }
-
-      const yearMatch = cleanStr.match(/\d{4}/);
-      const dayMatch = cleanStr.match(/\b\d{1,2}\b/);
-      return yearMatch && dayMatch
-        ? `${yearMatch[0]}-${foundMonth}-${dayMatch[0].padStart(2, "0")}`
-        : cleanStr;
-    };
-
-    // --- 4. 抓取逻辑实现 ---
     const getFirstValidText = (
       selectors,
       parent = document,
       useBlacklist = true
     ) => {
       for (const sel of selectors) {
-        const el = parent.querySelector(sel);
-        if (el && el.innerText.trim()) {
+        let el;
+        try {
+          el = parent.querySelector(sel);
+        } catch {
+          continue;
+        }
+        if (el && el.innerText && el.innerText.trim()) {
           const txt = el.innerText.trim();
-          if (useBlacklist && BLACKLIST_REGEX.some((r) => r.test(txt)))
-            continue;
+          if (useBlacklist && BLACKLIST_REGEX.some((r) => r.test(txt))) continue;
           return txt;
         }
       }
@@ -489,8 +761,13 @@ function scrapeAmazonLogic() {
 
     const getFirstElement = (selectors, parent = document) => {
       for (const sel of selectors) {
-        const el = parent.querySelector(sel);
-        if (el && el.textContent.trim()) return el;
+        let el;
+        try {
+          el = parent.querySelector(sel);
+        } catch {
+          continue;
+        }
+        if (el && el.textContent && el.textContent.trim()) return el;
       }
       return null;
     };
@@ -524,52 +801,124 @@ function scrapeAmazonLogic() {
       return "Global";
     };
 
-    // 4.1 基本信息
+    const extractStars = (parent) => {
+      const starSelectors = [
+        '[data-hook="review-star-rating"]',
+        '[data-hook="cmps-review-star-rating"]',
+        '[data-hook*="star-rating"]',
+        ".review-rating",
+        "i.a-icon-star",
+        ".a-icon-alt",
+      ];
+      let rawValue = "";
+      for (const sel of starSelectors) {
+        const el = parent.querySelector(sel);
+        if (el) {
+          rawValue =
+            el.getAttribute("aria-label") ||
+            el.getAttribute("title") ||
+            el.innerText ||
+            "";
+          if (rawValue) break;
+        }
+      }
+      if (!rawValue) return 0;
+      const match = rawValue.match(/(\d([.,]\d)?)/);
+      if (match) {
+        return parseFloat(match[0].replace(",", "."));
+      }
+      return 0;
+    };
+
+    const extractMainImage = () => {
+      for (const sel of config.mainImage) {
+        let el;
+        try {
+          el = document.querySelector(sel);
+        } catch {
+          continue;
+        }
+        if (!el) continue;
+        const src =
+          el.getAttribute("data-old-hires") ||
+          el.getAttribute("data-a-dynamic-image") ||
+          el.currentSrc ||
+          el.getAttribute("src") ||
+          "";
+        if (src && src.startsWith("{")) {
+          try {
+            const map = JSON.parse(src);
+            const keys = Object.keys(map);
+            if (keys.length) return keys[0];
+          } catch {
+            /* ignore */
+          }
+        }
+        if (src && /^https?:\/\//i.test(src)) return src.split(" ")[0];
+      }
+      return "";
+    };
+
+    const cleanBrand = (raw) => {
+      if (!raw) return "";
+      return raw
+        .replace(
+          /^(Brand|Visit the|Marke|Marque|Marca|Marka|Merk)\s*:?\s*/i,
+          ""
+        )
+        .replace(/\s+Store$/i, "")
+        .replace(/^Besuche den\s+/i, "")
+        .replace(/\s+Store\.?$/i, "")
+        .trim();
+    };
+
+    // 基本信息
     const productTitle = getFirstValidText(config.productTitle);
     const asin =
       document.querySelector("#ASIN")?.value ||
       window.location.href.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/)?.[1] ||
       "UNKNOWN";
 
-    // 4.2 五点描述 (带黑名单精滤)
+    let price = getFirstValidText(config.price, document, false);
+    if (price) price = price.replace(/\s+/g, " ").trim();
+
+    let brand = cleanBrand(getFirstValidText(config.brand, document, false));
+    const main_image = extractMainImage();
+
+    // 五点描述
     let feature_bullets = [];
     for (const sel of config.bulletPoints) {
       const nodes = document.querySelectorAll(sel);
       if (nodes.length > 0) {
         const cleaned = Array.from(nodes)
           .filter((n) => {
-            // 1. 扩展容器识别：支持更多欧洲站点的容器结构
             const isInMainFeatureArea =
               n.closest("#feature-bullets") ||
               n.closest("#featurebullets_feature_div") ||
               n.closest("#productFactsDesktop_feature_div") ||
-              n.closest(".a-expander-content"); // 新增：支持德国站等折叠式容器
-            
-            // 2. 屏蔽详情参数区域
+              n.closest(".a-expander-content");
+
             const isDetails =
               n.closest("#prodDetails") ||
               n.closest("#productDetails_feature_div") ||
-              n.closest(".product-facts-detail"); // 新增：屏蔽"Zusätzliche Informationen"等区域
-            
-            // 3. 屏蔽购物车/侧边栏区域
+              n.closest(".product-facts-detail");
+
             const isSideBar =
               n.closest("#rightCol") || n.closest("#nav-flyout-ewc");
-            
-            // 4. 屏蔽客户评分分布区域
-            const isCusterReview = n.closest(
+
+            const isCustomerReview = n.closest(
               "#a-fixed-left-grid-col a-col-left"
             );
-            
-            // 5. 仅保留主内容区
+
             return (
-              isInMainFeatureArea && !isDetails && !isSideBar && !isCusterReview
+              isInMainFeatureArea &&
+              !isDetails &&
+              !isSideBar &&
+              !isCustomerReview
             );
           })
-          .map((n) => {
-            // 关键改动：获取该节点下的所有文本，防止 span 嵌套导致的文本断裂
-            return n.textContent.replace(/\s+/g, " ").trim();
-          })
-          .filter((t) => t.length > 5); // 稍微放宽长度限制，现代版有些描述可能简短但重要
+          .map((n) => n.textContent.replace(/\s+/g, " ").trim())
+          .filter((t) => t.length > 5);
 
         if (cleaned.length > 0) {
           feature_bullets = [...new Set(cleaned)].slice(0, 10);
@@ -578,7 +927,7 @@ function scrapeAmazonLogic() {
       }
     }
 
-    // 4.3 评论 (跨站点位置解析)
+    // 评论（仅当前 DOM 可见）
     let reviewNodes = [];
     for (const sel of config.reviewContainers) {
       const found = document.querySelectorAll(sel);
@@ -588,106 +937,64 @@ function scrapeAmazonLogic() {
       }
     }
 
-    const extractStars = (parent) => {
-      // 1. 定义多重备选选择器（包含国际评论特有的 selector）
-      const starSelectors = [
-        '[data-hook="review-star-rating"]',
-        '[data-hook="cmps-review-star-rating"]',
-        ".review-rating",
-        "i.a-icon-star",
-        ".a-icon-alt", // 许多国际评论的星级文本隐藏在这里
-      ];
-      let rawValue = "";
-      for (const sel of starSelectors) {
-        const el = parent.querySelector(sel);
-        if (el) {
-          // 依次尝试获取 aria-label, title 或 纯文本
-          rawValue =
-            el.getAttribute("aria-label") ||
-            el.getAttribute("title") ||
-            el.innerText ||
-            "";
-          if (rawValue) break;
-        }
-      }
-
-      if (!rawValue) return 0;
-
-      // 2. 核心修复：处理欧洲数字格式 (例如 "4,8" 或 "4.8")
-      // 正则匹配：找到数字部分，支持逗号或点号
-      const match = rawValue.match(/(\d([.,]\d)?)/);
-      if (match) {
-        // 将逗号统一替换为点号，以便 parseFloat 正确转换
-        const numStr = match[0].replace(",", ".");
-        return parseFloat(numStr);
-      }
-      return 0;
-    };
-
     const customer_reviews = reviewNodes
       .map((el) => {
-        // 1. 获取原始标题 (关闭黑名单，确保拿到原始字符串)
-        // 1. 获取标题节点
         const titleEl = getFirstElement(config.reviewTitle, el);
-        // 2. 强力清洗逻辑
         let cleanHeadline = "";
         if (titleEl) {
-          // 【关键修复】：不直接使用 innerText，而是克隆节点并移除掉其中的星级 span
-          // 移除星级干扰和可能的翻译占位符
           cleanHeadline = cleanElementText(
             titleEl,
-            ".a-icon-alt, .a-letter-space, .cr-translated-review-content, [data-hook*=\"star-rating\"], i"
+            '.a-icon-alt, .a-letter-space, .cr-translated-review-content, [data-hook*="star-rating"], i'
           );
         }
-        // --- 2. 正文抓取逻辑 (核心优化点) ---
+
         const bodyContainer = getFirstElement(config.reviewBody, el);
 
-        // 2. 强力清洗（双保险）：如果克隆方案没去干净，再跑一次正则
         const globalStarRegex =
           /^\d(?:[.,]\d)?\s+(?:von\s+5\s+Sternen|out\s+of\s+5\s+stars|\S+\s+sur\s+5|su\s+5\s+stelle|de\s+5\s+estrellas|van\s+5\s+sterren|av\s+5\s+\S+|na\s+5\s+\S+)/i;
         cleanHeadline = cleanHeadline.replace(globalStarRegex, "").trim();
 
-        // 在亚马逊上，很多国际评论同步过来时确实是没有标题的
-        const isStillDirty = /^\d(?:[.,]\d)?\s+(?:von|out|sur|su|de|van|av|na)/i.test(cleanHeadline);
+        const isStillDirty =
+          /^\d(?:[.,]\d)?\s+(?:von|out|sur|su|de|van|av|na)/i.test(
+            cleanHeadline
+          );
         if (isStillDirty) {
           cleanHeadline = "";
         }
 
         let cleanBody = "";
         if (bodyContainer) {
-          // 优先寻找原文内容 span (针对国际评论)
-          const originalContent =
-            bodyContainer.matches(".cr-original-review-content")
-              ? bodyContainer
-              : bodyContainer.querySelector(".cr-original-review-content");
+          const originalContent = bodyContainer.matches(
+            ".cr-original-review-content"
+          )
+            ? bodyContainer
+            : bodyContainer.querySelector(".cr-original-review-content");
           if (originalContent) {
             cleanBody = cleanElementText(originalContent);
           } else {
-            // 如果不是国际评论，则取容器内的文本，但要避开脚本和样式
-            const richContent =
-              bodyContainer.matches('[data-hook="reviewRichContentContainer"]')
-                ? bodyContainer
-                : bodyContainer.querySelector('[data-hook="reviewRichContentContainer"]');
+            const richContent = bodyContainer.matches(
+              '[data-hook="reviewRichContentContainer"]'
+            )
+              ? bodyContainer
+              : bodyContainer.querySelector(
+                  '[data-hook="reviewRichContentContainer"]'
+                );
             const bodySource = richContent || bodyContainer;
             const tempBody = bodySource.cloneNode(true);
             const scripts = tempBody.querySelectorAll(
-              "script, style, noscript, .a-hidden, .a-expander-header, .a-expander-prompt, .a-expander-partial-collapse-header, .a-cardui-expand-control-footer, [data-hook=\"reviewExpandButtonContainer\"], [data-hook=\"translationSpinner\"]"
+              'script, style, noscript, .a-hidden, .a-expander-header, .a-expander-prompt, .a-expander-partial-collapse-header, .a-cardui-expand-control-footer, [data-hook="reviewExpandButtonContainer"], [data-hook="translationSpinner"]'
             );
             scripts.forEach((s) => s.remove());
             cleanBody = tempBody.textContent.trim();
           }
         }
-        // 清洗正文：去除多余换行，保持段落感
         cleanBody = cleanBody.replace(/\n\s*\n/g, "\n").replace(/\s{2,}/g, " ");
 
-        // 4. 获取日期和国家
-        // --- 3. 日期与国家 ---
         const dateEl = getFirstElement(
           ['[data-hook="review-date"]', '[data-hook="reviewDate"]'],
           el
         );
         const dateText = dateEl ? cleanElementText(dateEl) : "";
-        // 增强版国家提取：兼容 Reseñado en el Reino Unido (西班牙语等)
         const countryMatch = dateText.match(
           /(?:in|aus|en|il|em|nel|su|von|från|z|u|en\sel)\s+(.+?)\s+(?:on|am|le|il|el|au|al|del|den|dnia|på|op|el)\s+\d/i
         );
@@ -696,15 +1003,7 @@ function scrapeAmazonLogic() {
         return {
           headline: cleanHeadline || "No Title",
           body: cleanBody || "No Content",
-          star_rating: (function (parent) {
-            const starEl =
-              parent.querySelector('[data-hook*="star-rating"]') ||
-              parent.querySelector(".a-icon-star");
-            const val =
-              starEl?.getAttribute("aria-label") || starEl?.innerText || "0";
-            const m = val.match(/(\d([.,]\d)?)/);
-            return m ? parseFloat(m[0].replace(",", ".")) : 0;
-          })(el),
+          star_rating: extractStars(el),
           review_date: dateText,
           origin_country:
             parsedOriginCountry !== "Global"
@@ -716,45 +1015,99 @@ function scrapeAmazonLogic() {
       })
       .filter((r) => r.body.length > 5);
 
-    // 检查数量是否异常
-    let errorSummary = "";
-    if (feature_bullets.length > 0 && feature_bullets.length < 3) {
-      errorSummary = `抓取数量偏少(${feature_bullets.length}条)，可能存在漏抓`;
-    } else if (feature_bullets.length === 0) {
-      errorSummary = "未识别到任何描述点";
+    const coverage = {
+      has_title: Boolean(productTitle),
+      has_asin: asin !== "UNKNOWN",
+      has_price: Boolean(price),
+      has_brand: Boolean(brand),
+      has_main_image: Boolean(main_image),
+      bullet_count: feature_bullets.length,
+      review_count: customer_reviews.length,
+    };
+
+    const warnings = [];
+    if (!productTitle) warnings.push("未识别到商品标题");
+    if (asin === "UNKNOWN") warnings.push("未识别到 ASIN");
+    if (!price) warnings.push("未识别到价格");
+    if (!brand) warnings.push("未识别到品牌");
+    if (!main_image) warnings.push("未识别到主图");
+    if (feature_bullets.length === 0) {
+      warnings.push("未识别到任何描述点");
+    } else if (feature_bullets.length < 3) {
+      warnings.push(
+        `描述点偏少(${feature_bullets.length}条)，可能存在漏抓`
+      );
+    }
+    if (customer_reviews.length === 0) {
+      warnings.push("当前页未识别到评论（仅抓取页面可见评论）");
     }
 
-    // --- 5. 构建最终返回对象 (调整为含 metadata 结构) ---
+    let scrape_status = "success";
+    if (!productTitle) {
+      scrape_status = "failed";
+    } else if (warnings.length > 0) {
+      scrape_status = "partial";
+    }
+
     const productsList = [
       {
         asin: asin,
         productTitle: productTitle,
+        price: price,
+        brand: brand,
+        main_image: main_image,
         feature_bullets: feature_bullets,
         customer_reviews: customer_reviews,
-        scrape_status: productTitle ? "success" : "failed",
+        scrape_status: scrape_status,
+        coverage: coverage,
+        warnings: warnings,
       },
     ];
 
     return {
       metadata: {
+        schema_version: SCHEMA_VERSION,
         scrape_timestamp: now,
         marketplace: marketplace,
         domain: host,
         language: language,
-        total_asins: productsList.length
+        total_asins: productsList.length,
+        reviews_scope: REVIEWS_SCOPE,
       },
       products: productsList,
     };
   } catch (e) {
     return {
       metadata: {
+        schema_version: "1.2.0",
         scrape_timestamp: new Date().toISOString(),
         marketplace: "ERROR",
         domain: window.location.hostname,
         language: "Unknown",
-        total_asins: 0
+        total_asins: 0,
+        reviews_scope: "visible_dom_only",
       },
-      products: [{ scrape_status: "failed", error: e.message }]
+      products: [
+        {
+          scrape_status: "failed",
+          error: e.message,
+          price: "",
+          brand: "",
+          main_image: "",
+          coverage: {
+            has_title: false,
+            has_asin: false,
+            has_price: false,
+            has_brand: false,
+            has_main_image: false,
+            bullet_count: 0,
+            review_count: 0,
+          },
+          warnings: ["抓取过程发生异常: " + e.message],
+          feature_bullets: [],
+          customer_reviews: [],
+        },
+      ],
     };
   }
 }
