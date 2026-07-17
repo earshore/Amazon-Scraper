@@ -46,7 +46,7 @@
 - **导出 JSON**
 - **本地缓存**：`chrome.storage.local` 键 `lastScrapedData`，按 **ASIN + 域名** 恢复上次结果；预览展示缓存时间戳
 - **重新分析**：已有本地结果时，主按钮变为「重新分析」，覆盖 `lastScrapedData` 缓存
-- **语言不匹配提示**：当 `document.documentElement.lang` 不在该站点允许的语言前缀列表中时提示；可选择 **仍要分析**
+- **语言硬校验**：仅允许各站点本地语言（如 `amazon.de` → `de`）；`html[lang]` 不符时**禁止分析**（无「仍要分析」）
 - **评论范围元数据**：`metadata.reviews_scope` 固定为 `"visible_dom_only"`
 
 ---
@@ -142,9 +142,18 @@ npm run pack
 
 若当前标签页 URL 中的 ASIN 与域名，与本地缓存的上次结果一致，打开弹窗时会自动恢复上次结果，并显示缓存时间戳。需要最新数据时，再次点击 **分析此页面** 即可重新抓取。
 
-### 语言不匹配提示
+### 语言校验（硬拦截）
 
-扩展根据当前 hostname 检查 `document.documentElement.lang` 是否属于该站点允许的语言前缀。例如：`amazon.de` 允许 `de` 与 `en`，因此德语站使用英文界面**不会**触发警告；`amazon.com` 仅允许 `en`。不在允许列表中时会给出提示；可点击 **仍要分析** 继续，也可先切换到允许的语言再抓取，以降低选择器失效风险。
+扩展根据 hostname 检查 `document.documentElement.lang` 是否为该站**本地语言**（见 `scraper/marketplaces.js` 的 `langs`）。示例：
+
+| 站点 | 允许语言 |
+|------|----------|
+| amazon.de | `de` |
+| amazon.fr | `fr` |
+| amazon.com / .co.uk / .ie | `en` |
+| amazon.com.be | `fr` / `nl` |
+
+界面语言不符时：**禁止分析**，状态条显示「语言不符」，请先在亚马逊切换到对应语言。不再提供「仍要分析」绕过。
 
 ---
 
@@ -197,8 +206,8 @@ Amz_{marketplace}_{ASIN}_{scrape_timestamp}.json
 2. **依赖亚马逊页面 DOM 结构**  
    改版或 A/B 测试可能导致选择器失效，出现字段漏抓；描述点相关问题会进入 **`warnings`** 并可能为 `partial`，无标题则为 `failed`。
 
-3. **多语言站点可能产生语言不匹配警告**  
-   当 `document.documentElement.lang` 不在该 host 允许的语言前缀列表中时会提示（例如 `amazon.com` 仅允许 `en`；`amazon.de` 允许 `de` 与 `en`）。界面语言不在允许范围时，部分节点文案与结构可能不同，影响解析成功率。
+3. **语言必须与站点一致**  
+   例如德国站英文 UI（`lang=en`）会被硬拦截，需切到德语后再分析。
 
 4. **仅限本地、当前标签页解析**  
    你必须先手动打开商品详情页；扩展通过 `activeTab` + `scripting` 注入逻辑读取当前页，不提供后台批量抓取、调度或代理池。

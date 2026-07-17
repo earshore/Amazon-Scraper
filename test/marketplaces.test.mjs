@@ -69,10 +69,32 @@ describe("isAmazonHost / marketplace codes", () => {
     assert.equal(mp.getMarketplaceCode("example.com"), "OTHER");
   });
 
-  it("returns language prefixes per host", () => {
-    assert.deepEqual(mp.getLangPrefixes("www.amazon.de"), ["de", "en"]);
+  it("returns locale-only language prefixes per host", () => {
+    assert.deepEqual(mp.getLangPrefixes("www.amazon.de"), ["de"]);
+    assert.deepEqual(mp.getLangPrefixes("www.amazon.fr"), ["fr"]);
+    assert.deepEqual(mp.getLangPrefixes("www.amazon.com.be"), ["fr", "nl"]);
     assert.deepEqual(mp.getLangPrefixes("www.amazon.com"), ["en"]);
     assert.equal(mp.getLangPrefixes("www.example.com"), null);
+  });
+});
+
+describe("isLangAllowed / isHostLangAllowed", () => {
+  it("allows only marketplace locale (DE rejects English UI)", () => {
+    assert.equal(mp.isLangAllowed("de", ["de"]), true);
+    assert.equal(mp.isLangAllowed("de-DE", ["de"]), true);
+    assert.equal(mp.isLangAllowed("en", ["de"]), false);
+    assert.equal(mp.isLangAllowed("en-US", ["de"]), false);
+    assert.equal(mp.isHostLangAllowed("www.amazon.de", "de-de"), true);
+    assert.equal(mp.isHostLangAllowed("www.amazon.de", "en"), false);
+    assert.equal(mp.isHostLangAllowed("www.amazon.com", "en-GB"), true);
+    assert.equal(mp.isHostLangAllowed("www.amazon.fr", "en"), false);
+    assert.equal(mp.isHostLangAllowed("www.amazon.com.be", "nl"), true);
+    assert.equal(mp.isHostLangAllowed("www.amazon.com.be", "en"), false);
+  });
+
+  it("rejects empty lang", () => {
+    assert.equal(mp.isLangAllowed("", ["de"]), false);
+    assert.equal(mp.isLangAllowed(null, ["en"]), false);
   });
 });
 

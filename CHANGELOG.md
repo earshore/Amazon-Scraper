@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Unified primary action: removed separate「清除本地缓存」; when cached data is shown the main button becomes「重新分析」(subtitle explains cache overwrite). Single CTA, higher information density.
+- **Locale hard gate:** each marketplace allows only its local language(s) (e.g. DE → `de` only; no EN on DE/FR/…). Wrong `html[lang]` blocks scrape (no force-continue).
+- Unified popup visual tokens (ok/warn/danger/chip/type scale) so page-hint, toast, banners, and chips share one design system.
 
 ### Added
 

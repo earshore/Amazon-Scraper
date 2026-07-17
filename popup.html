@@ -9,13 +9,29 @@
         --text: #0f1111;
         --muted: #565959;
         --line: #e3e6e6;
+        --chip: #f0f2f2;
         --primary: #ff9900;
         --primary-hover: #e88b00;
         --primary-text: #0f1111;
         --secondary: #232f3e;
         --secondary-hover: #37475a;
         --ok: #067d62;
+        --ok-bg: #f4faf7;
+        --ok-line: #d4e8df;
+        --warn: #b78103;
+        --warn-label: #856404;
+        --warn-bg: #fffbf0;
+        --warn-line: #f0e0a0;
+        --danger: #c53030;
+        --danger-bg: #fff5f5;
+        --danger-line: #feb2b2;
+        --neutral: #879596;
         --radius: 6px;
+        --type-xs: 10px;
+        --type-sm: 11px;
+        --type-md: 12px;
+        --type-lg: 13px;
+        --type-title: 14px;
       }
       body {
         width: 400px;
@@ -97,20 +113,20 @@
         flex-shrink: 0;
       }
       .page-hint.warn .ph-dot {
-        background: #b78103;
+        background: var(--warn);
       }
       .page-hint.detecting .ph-dot {
-        background: #879596;
+        background: var(--neutral);
       }
       .page-hint .ph-label {
         font-weight: 600;
-        font-size: 11px;
+        font-size: var(--type-sm);
         color: var(--ok);
         letter-spacing: 0.01em;
         flex-shrink: 0;
       }
       .page-hint.warn .ph-label {
-        color: #856404;
+        color: var(--warn-label);
       }
       .page-hint.detecting .ph-label {
         color: var(--muted);
@@ -126,10 +142,10 @@
       }
       .page-hint .ph-chip {
         font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-        font-size: 10px;
+        font-size: var(--type-xs);
         font-weight: 500;
         color: var(--text);
-        background: #f0f2f2;
+        background: var(--chip);
         padding: 1px 5px;
         border-radius: 3px;
         max-width: 160px;
@@ -140,9 +156,8 @@
       .page-hint .ph-chip.asin {
         letter-spacing: 0.02em;
       }
-      /* Secondary line of info — same strip, muted, no second card */
       .page-hint .ph-note {
-        font-size: 10px;
+        font-size: var(--type-xs);
         font-weight: 400;
         color: var(--muted);
         min-width: 0;
@@ -165,7 +180,7 @@
         padding: 0 14px;
         border: none;
         border-radius: var(--radius);
-        font-size: 13px;
+        font-size: var(--type-lg);
         font-weight: 600;
         line-height: 36px;
         text-align: center;
@@ -203,28 +218,14 @@
       #downloadBtn:active {
         filter: brightness(1.05);
       }
-      .force-btn {
-        background: #856404;
-        color: white;
-        border: none;
-        padding: 5px 10px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 12px;
-        font-weight: 600;
-        height: 28px;
-        line-height: 1;
-        width: auto;
-        display: inline-block;
-        pointer-events: auto;
-      }
 
+      /* Shared banner family: toast / success / partial / danger */
       #status {
         display: none;
         margin: 0 0 8px;
         padding: 6px 8px;
-        border-radius: 4px;
-        font-size: 11px;
+        border-radius: var(--radius);
+        font-size: var(--type-sm);
         font-weight: 400;
         line-height: 1.4;
         text-align: left;
@@ -232,22 +233,22 @@
         user-select: text;
         pointer-events: none;
         box-shadow: none;
-        border: 1px solid transparent;
+        border: 1px solid var(--line);
+        border-left-width: 3px;
+        border-left-style: solid;
+        background: var(--chip);
+        color: var(--text);
       }
       #status.status-toast {
         display: flex;
         align-items: center;
         gap: 6px;
-        background: #f7f8f8;
-        color: var(--text);
-        border: 1px solid var(--line);
-        border-left: 3px solid #879596;
+        border-left-color: var(--neutral);
         padding: 5px 8px;
-        font-size: 11px;
       }
       #status.status-toast.ok {
-        background: #f4faf7;
-        border-color: #d4e8df;
+        background: var(--ok-bg);
+        border-color: var(--ok-line);
         border-left-color: var(--ok);
       }
       #status.status-toast.info {
@@ -258,7 +259,7 @@
         width: 12px;
         height: 12px;
         border-radius: 50%;
-        background: #879596;
+        background: var(--neutral);
         color: #fff;
         font-size: 8px;
         font-weight: 700;
@@ -273,44 +274,55 @@
         min-width: 0;
       }
       #status.success {
-        background: #f4faf7;
-        color: var(--text);
-        border: 1px solid #d4e8df;
-        border-left: 3px solid var(--ok);
-        text-align: left;
+        background: var(--ok-bg);
+        border-color: var(--ok-line);
+        border-left-color: var(--ok);
         pointer-events: auto;
-        font-size: 11px;
       }
       #status.partial {
-        background: #fffbf0;
-        color: var(--text);
-        border: 1px solid #f0e0a0;
-        border-left: 3px solid #b78103;
-        text-align: left;
+        background: var(--warn-bg);
+        border-color: var(--warn-line);
+        border-left-color: var(--warn);
         pointer-events: auto;
-        font-size: 11px;
+      }
+      #status.status-banner.danger {
+        background: var(--danger-bg);
+        border-color: var(--danger-line);
+        border-left-color: var(--danger);
+        color: var(--text);
+      }
+      #status .banner-title {
+        font-weight: 600;
+        font-size: var(--type-sm);
+        color: var(--danger);
+        margin: 0 0 2px;
+      }
+      #status .banner-detail {
+        font-size: var(--type-sm);
+        color: var(--muted);
+        margin: 0;
       }
       .warn-block,
       .note-block {
         border-radius: 4px;
         padding: 6px 8px;
         margin: 0 0 6px;
-        font-size: 11px;
+        font-size: var(--type-sm);
+        border: 1px solid var(--line);
       }
       .warn-block {
-        background: #fff8e6;
-        border: 1px solid #f0e0a0;
-        color: #7a5b00;
+        background: var(--warn-bg);
+        border-color: var(--warn-line);
+        color: var(--warn-label);
       }
       .note-block {
-        background: #f4f6f8;
-        border: 1px solid var(--line);
+        background: var(--chip);
         color: var(--muted);
       }
       .msg-title {
         font-weight: 600;
         margin-bottom: 2px;
-        font-size: 11px;
+        font-size: var(--type-sm);
       }
       .warn-block ul,
       .note-block ul,
@@ -336,7 +348,7 @@
       .spinner {
         width: 22px;
         height: 22px;
-        border: 2px solid #eee;
+        border: 2px solid var(--line);
         border-top: 2px solid var(--primary);
         border-radius: 50%;
         animation: spin 0.8s linear infinite;
@@ -365,23 +377,23 @@
         margin: 0 0 8px;
       }
       .coverage-chip {
-        font-size: 10px;
+        font-size: var(--type-xs);
         padding: 2px 6px;
         border-radius: 999px;
-        background: #f0f2f2;
+        background: var(--chip);
         color: var(--text);
       }
       .coverage-chip.ok {
-        background: #edf7ed;
-        color: #1e4620;
+        background: var(--ok-bg);
+        color: var(--ok);
       }
       .coverage-chip.warn {
-        background: #fff3cd;
-        color: #856404;
+        background: var(--warn-bg);
+        color: var(--warn-label);
       }
       .coverage-chip.bad {
-        background: #fff5f5;
-        color: #c53030;
+        background: var(--danger-bg);
+        color: var(--danger);
       }
       .meta-row {
         font-size: 11px;
@@ -402,7 +414,7 @@
         border: 1px solid var(--line);
         object-fit: contain;
         margin: 0 0 8px;
-        background: #fafafa;
+        background: var(--chip);
         float: right;
         margin-left: 10px;
       }
@@ -447,12 +459,12 @@
         margin-bottom: 2px;
       }
       .stars {
-        color: #de7921;
-        font-size: 12px;
+        color: var(--primary);
+        font-size: var(--type-md);
         white-space: nowrap;
       }
       .star-empty {
-        color: #ccc;
+        color: var(--line);
       }
       .review-headline {
         font-weight: 600;

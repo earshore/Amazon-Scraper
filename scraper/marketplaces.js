@@ -1,9 +1,12 @@
 /**
  * Shared marketplace / ASIN helpers for Amazon Product Insight.
- * Single source of truth for domains, language prefixes, host checks, ASIN parsing.
+ * Single source of truth for domains, locale languages, host checks, ASIN parsing.
  *
  * Browser: load before popup.js / inject before core.js → AmazonProductInsightMarketplaces
  * Node: require("./marketplaces")
+ *
+ * Language policy: only marketplace locale(s). Extra UI languages (e.g. EN on DE)
+ * are rejected — selectors/copy differ and scrapes are low value.
  */
 (function (root, factory) {
   const api = factory();
@@ -12,18 +15,21 @@
   }
   root.AmazonProductInsightMarketplaces = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
-  /** Longest-match first (amazon.com.be before amazon.com). */
+  /**
+   * Longest-match first (amazon.com.be before amazon.com).
+   * `langs` = allowed documentElement.lang prefixes for scraping (locale only).
+   */
   const MARKETPLACES = [
-    { domain: "amazon.com.be", code: "BE", langs: ["fr", "nl", "en"] },
+    { domain: "amazon.com.be", code: "BE", langs: ["fr", "nl"] },
     { domain: "amazon.co.uk", code: "UK", langs: ["en"] },
     { domain: "amazon.ie", code: "IE", langs: ["en"] },
-    { domain: "amazon.de", code: "DE", langs: ["de", "en"] },
-    { domain: "amazon.fr", code: "FR", langs: ["fr", "en"] },
-    { domain: "amazon.it", code: "IT", langs: ["it", "en"] },
-    { domain: "amazon.es", code: "ES", langs: ["es", "en"] },
-    { domain: "amazon.nl", code: "NL", langs: ["nl", "en"] },
-    { domain: "amazon.se", code: "SE", langs: ["sv", "en"] },
-    { domain: "amazon.pl", code: "PL", langs: ["pl", "en"] },
+    { domain: "amazon.de", code: "DE", langs: ["de"] },
+    { domain: "amazon.fr", code: "FR", langs: ["fr"] },
+    { domain: "amazon.it", code: "IT", langs: ["it"] },
+    { domain: "amazon.es", code: "ES", langs: ["es"] },
+    { domain: "amazon.nl", code: "NL", langs: ["nl"] },
+    { domain: "amazon.se", code: "SE", langs: ["sv"] },
+    { domain: "amazon.pl", code: "PL", langs: ["pl"] },
     { domain: "amazon.com", code: "US", langs: ["en"] },
   ];
 
@@ -85,6 +91,32 @@
     return entry ? entry.langs.slice() : null;
   }
 
+  /**
+   * True if html[lang] matches an allowed prefix for the host.
+   * Matches "de", "de-DE", "de-de" against prefix "de"; does not match "deu".
+   */
+  function isLangAllowed(langAttr, prefixes) {
+    if (!prefixes || !prefixes.length) return false;
+    const raw = String(langAttr || "").trim().toLowerCase();
+    if (!raw) return false;
+    const primary = raw.split(/[-_]/)[0];
+    return prefixes.some((p) => {
+      const prefix = String(p).toLowerCase();
+      return primary === prefix || raw === prefix || raw.startsWith(prefix + "-");
+    });
+  }
+
+  function isHostLangAllowed(hostname, langAttr) {
+    const prefixes = getLangPrefixes(hostname);
+    return isLangAllowed(langAttr, prefixes);
+  }
+
+  /** Human-readable list for UI, e.g. "de" or "fr / nl". */
+  function formatLangList(prefixes) {
+    if (!prefixes || !prefixes.length) return "";
+    return prefixes.join(" / ");
+  }
+
   /** Manifest host_permissions patterns (subdomain + apex). */
   function hostPermissionPatterns() {
     const out = [];
@@ -115,6 +147,9 @@
     getMarketplaceCode: getMarketplaceCode,
     isAmazonHost: isAmazonHost,
     getLangPrefixes: getLangPrefixes,
+    isLangAllowed: isLangAllowed,
+    isHostLangAllowed: isHostLangAllowed,
+    formatLangList: formatLangList,
     hostPermissionPatterns: hostPermissionPatterns,
     isExportableStatus: isExportableStatus,
     isExportableResult: isExportableResult,

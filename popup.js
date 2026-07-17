@@ -102,9 +102,12 @@ function showBootError(message) {
   const card = document.querySelector(".card") || document.body;
   const box = document.createElement("div");
   box.setAttribute("role", "alert");
+  box.className = "status-banner danger boot-error";
   box.style.cssText =
-    "margin:12px 0;padding:12px;background:#FFF5F5;color:#C53030;border:1px solid #FEB2B2;border-radius:6px;font-size:13px;line-height:1.45;";
-  box.textContent = message;
+    "display:block;margin:0 0 8px;padding:6px 8px;border-radius:6px;font-size:11px;line-height:1.4;background:var(--danger-bg,#fff5f5);border:1px solid var(--danger-line,#feb2b2);border-left:3px solid var(--danger,#c53030);color:var(--text,#0f1111);";
+  box.innerHTML = `<div class="banner-title" style="font-weight:600;color:var(--danger,#c53030);margin:0 0 2px;">初始化失败</div><div class="banner-detail" style="color:var(--muted,#565959);">${escapeHtml(
+    message
+  )}</div>`;
   card.insertBefore(box, card.firstChild);
 }
 
@@ -118,6 +121,50 @@ function isAmazonHost(hostname) {
 
 function isExportableResult(data) {
   return mp ? mp.isExportableResult(data) : false;
+}
+
+/**
+ * Locale gate: only marketplace language(s) may be scraped.
+ * @returns {{ ok: boolean, note?: string, detail?: string, prefixes?: string[] }}
+ */
+function evaluatePageLanguage(host, langAttr) {
+  if (!mp) {
+    return { ok: false, note: "配置未加载", detail: "语言校验模块不可用。" };
+  }
+  const prefixes = mp.getLangPrefixes(host);
+  if (!prefixes || !prefixes.length) {
+    return {
+      ok: false,
+      note: "未知站点语言策略",
+      detail: "无法确定该站点允许的界面语言。",
+    };
+  }
+  if (mp.isLangAllowed(langAttr, prefixes)) {
+    return { ok: true, prefixes };
+  }
+  const need = mp.formatLangList(prefixes);
+  const got = String(langAttr || "").trim() || "(空)";
+  return {
+    ok: false,
+    prefixes,
+    note: `需要 ${need} · 当前 ${got}`,
+    detail: `该站点仅支持界面语言 ${need}。请先在亚马逊切换到对应语言后再分析（其他语言选择器不可靠）。当前 html[lang]=${got}`,
+  };
+}
+
+async function readPageLangAndHost(tabId) {
+  const checkResults = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: "ISOLATED",
+    func: () => ({
+      lang: (document.documentElement.lang || "").toLowerCase(),
+      host: window.location.hostname,
+    }),
+  });
+  if (!checkResults || !checkResults[0] || !checkResults[0].result) {
+    return null;
+  }
+  return checkResults[0].result;
 }
 
 function formatTimestamp(iso) {
@@ -472,35 +519,28 @@ async function onScrapeClick() {
       return;
     }
 
-    const checkResults = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      world: "ISOLATED",
-      func: () => ({
-        lang: (document.documentElement.lang || "").toLowerCase(),
-        host: window.location.hostname,
-      }),
-    });
-
-    if (!checkResults || !checkResults[0] || !checkResults[0].result) {
+    const pageMeta = await readPageLangAndHost(tab.id);
+    if (!pageMeta) {
       showError("连接失败", "无法读取页面环境信息。");
       return;
     }
 
-    const { lang, host } = checkResults[0].result;
+    const { lang, host } = pageMeta;
 
     if (!isAmazonHost(host)) {
       showError("页面不支持", "请在支持的亚马逊商品详情页使用本扩展。");
       return;
     }
 
-    const prefixes = mp ? mp.getLangPrefixes(host) : null;
-
-    if (prefixes && !prefixes.some((prefix) => lang.startsWith(prefix))) {
-      showWarning(
-        "语言设置不匹配",
-        `检测到站点 ${host} 当前语言为 ${lang}。建议切换为站点常用语言后再分析，以提高卖点/评论解析成功率。`,
-        () => startScraping(tab)
-      );
+    const langGate = evaluatePageLanguage(host, lang);
+    if (!langGate.ok) {
+      const hint = document.getElementById("pageHint");
+      if (hint) {
+        setPageHintWarn(hint, "语言不符", langGate.note);
+        hint.dataset.ready = "1";
+      }
+      setScrapeEnabled(false);
+      showError("语言不符", langGate.detail);
       return;
     }
 
@@ -563,7 +603,22 @@ async function restoreCacheIfAny() {
     const hint = document.getElementById("pageHint");
     if (hint) hint.dataset.ready = "1";
 
-    if (!ctx.ok || !ctx.asin) return;
+    if (!ctx.ok || !ctx.asin || !tab?.id) return;
+
+    // Locale gate on open (hard block — no scrape if wrong language).
+    try {
+      const pageMeta = await readPageLangAndHost(tab.id);
+      if (pageMeta && isAmazonHost(pageMeta.host)) {
+        const langGate = evaluatePageLanguage(pageMeta.host, pageMeta.lang);
+        if (!langGate.ok) {
+          if (hint) setPageHintWarn(hint, "语言不符", langGate.note);
+          setScrapeEnabled(false);
+          return;
+        }
+      }
+    } catch (langErr) {
+      console.warn("Language probe failed:", langErr);
+    }
 
     // Storage + preview after page hint is visible.
     chrome.storage.local.get(["lastScrapedData"], (result) => {
@@ -676,38 +731,6 @@ async function startScraping(tab) {
   }
 }
 
-function showWarning(summary, detail, onContinue) {
-  const status = document.getElementById("status");
-  if (!status) {
-    showBootError(`${summary}: ${detail || ""}`);
-    return;
-  }
-  status.style.display = "block";
-  status.style.background = "#FFF3CD";
-  status.style.color = "#856404";
-  status.style.border = "1px solid #FFEEBA";
-  status.style.textAlign = "left";
-  status.style.pointerEvents = "auto";
-  status.innerHTML = `
-        <div style="font-weight:600; margin-bottom:4px;font-size:11px;">${escapeHtml(
-          summary
-        )}</div>
-        <div style="font-size:11px; margin-bottom:6px;">${escapeHtml(
-          detail
-        )}</div>
-        <button id="forceContinueBtn" type="button" class="force-btn">仍要分析</button>
-    `;
-  const btn = document.getElementById("forceContinueBtn");
-  if (btn) {
-    btn.onclick = onContinue;
-    try {
-      btn.focus();
-    } catch {
-      /* ignore */
-    }
-  }
-}
-
 function showError(summary, detail) {
   setLoaderVisible(false);
   const status = document.getElementById("status");
@@ -715,17 +738,12 @@ function showError(summary, detail) {
     showBootError(`${summary}: ${detail || ""}`);
     return;
   }
+  resetStatusStyles();
   status.style.display = "block";
-  status.style.background = "#FFF5F5";
-  status.style.color = "#C53030";
-  status.style.border = "1px solid #FEB2B2";
-  status.style.textAlign = "left";
-  status.className = "";
-  status.innerHTML = `<strong>${escapeHtml(
+  status.className = "status-banner danger";
+  status.innerHTML = `<div class="banner-title">${escapeHtml(
     summary
-  )}</strong><div style="font-size:12px;margin-top:4px;">${escapeHtml(
-    detail
-  )}</div>`;
+  )}</div><div class="banner-detail">${escapeHtml(detail || "")}</div>`;
 }
 
 function renderPreview(prod, metadata = {}) {
