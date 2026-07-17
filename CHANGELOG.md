@@ -5,17 +5,39 @@ All notable changes to **Amazon Product Insight** (local Chrome MV3 extension) a
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.6.2] - 2026-07-17
+## [1.6.3] - 2026-07-18
 
-### Fixed
+Ship-quality UI polish, locale hard-gate, and packaging/docs alignment on top of the 1.6.2 architecture.
 
-- Popup open latency: lightweight `background.js` service worker keeps extension warm; defer page detection / cache preview / remote thumbnail until after first paint so the toolbar popup feels instant.
+### Added
+
+- Lightweight `background.js` service worker (warms extension process for faster popup open).
+- Unified design tokens in `popup.html` (`--ok` / `--warn` / `--danger` / type scale) for a single visual language.
+- Compact page-hint strip (ready / warn / detecting share one layout).
+- Single primary CTA toolbar: **分析** / **重新分析** + **导出** (side-by-side).
+- Locale helpers: `isLangAllowed`, `isHostLangAllowed`, `formatLangList` in `scraper/marketplaces.js`.
 
 ### Changed
 
-- Unified primary action: removed separate「清除本地缓存」; when cached data is shown the main button becomes「重新分析」(subtitle explains cache overwrite). Single CTA, higher information density.
-- **Locale hard gate:** each marketplace allows only its local language(s) (e.g. DE → `de` only; no EN on DE/FR/…). Wrong `html[lang]` blocks scrape (no force-continue).
-- Unified popup visual tokens (ok/warn/danger/chip/type scale) so page-hint, toast, banners, and chips share one design system.
+- **Language hard gate:** each marketplace allows only its local language(s) (e.g. `amazon.de` → `de` only). Wrong `html[lang]` blocks scrape on open and on click; **no**「仍要分析」bypass.
+- Belgium (`amazon.com.be`) allows `fr` / `nl` only (no English).
+- Removed separate「清除本地缓存」control; re-analyze overwrites `lastScrapedData`.
+- Popup chrome densified: less helper copy, larger result preview, status toasts instead of button-like banners.
+- Status / chips / banners all use the same semantic colors (not ad-hoc hex per component).
+- Docs: README language table, QA §5 hard-gate steps, PRIVACY re-analyze wording, pack list includes `background.js`.
+
+### Fixed
+
+- Popup open latency: defer page probe / cache preview / remote thumbnail until after first paint.
+- Language-mismatch UX aligned with ready strip (no yellow “card” vs green strip mismatch).
+- `showError` uses design-system danger banner (no inline red button look).
+
+### Packaging
+
+- Runtime zip via `npm run pack` (whitelist; includes `background.js`).
+- `npm run check` remains the release gate (syntax + tests + verify).
+
+## [1.6.2] - 2026-07-17
 
 ### Added
 
@@ -24,7 +46,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflow template `docs/ci/github-actions-check.yml` (copy to `.github/workflows/check.yml` to enable Actions).
 - Unit tests for marketplaces + expanded scraper fixtures (few bullets, invalid ASIN, empty reviews, productFacts, failed payload).
 - `CONTRIBUTING.md` for contributor / release workflow.
-- Popup version label, privacy footer link, `aria-live` status regions.
 - Apex host permissions (`https://amazon.TLD/*` in addition to `*.amazon.TLD`).
 
 ### Changed
@@ -36,9 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Main image: pick largest from `data-a-dynamic-image` / `srcset`; HTTPS only.
 - Cache only `success` / `partial`; never restore or export `failed`.
 - Scrape button locked while in-flight (no concurrent inject races).
-- Clear cache requires confirmation.
 - `verify.mjs` reads version from manifest; asserts host_permissions ≡ marketplaces.
-- Docs / QA aligned with DE+en language allowlist and notes vs warnings.
 
 ### Removed
 

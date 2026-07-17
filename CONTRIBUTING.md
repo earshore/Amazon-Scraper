@@ -18,9 +18,10 @@ npm run check   # 语法 + 单测 + verify
 
 | 路径 | 职责 |
 |------|------|
-| `scraper/marketplaces.js` | 域名白名单、语言前缀、ASIN 解析（**单一数据源**） |
+| `scraper/marketplaces.js` | 域名白名单、**本地语言硬校验**、ASIN 解析（**单一数据源**） |
 | `scraper/core.js` | 页面 DOM 抓取与 schema 1.3.0 状态模型 |
 | `popup.js` / `popup.html` | 仅 UI：注入、预览、导出、缓存 |
+| `background.js` | 轻量 service worker |
 | `test/` | jsdom 夹具与 marketplaces 单元测试 |
 | `scripts/verify.mjs` | 版本 / 架构 / host 一致性门禁 |
 | `scripts/pack-extension.mjs` | 白名单运行时 zip |

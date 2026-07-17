@@ -4,7 +4,7 @@
 
 | 项目 | 值 |
 |------|-----|
-| 扩展版本 | **`1.6.2`** |
+| 扩展版本 | **`1.6.3`** |
 | Schema 版本 | **`1.3.0`** |
 | 抓取引擎 | `scraper/core.js`（`SCHEMA_VERSION` / `scrapeAmazonPage`） |
 

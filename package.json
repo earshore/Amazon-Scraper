@@ -1,6 +1,6 @@
 {
   "name": "amazon-product-insight",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "private": true,
   "description": "Chrome extension: local Amazon product page parser with JSON export",
   "repository": {
@@ -14,7 +14,7 @@
     "test": "node --test test/scraper.test.mjs test/marketplaces.test.mjs",
     "verify": "node scripts/verify.mjs",
     "pack": "node scripts/pack-extension.mjs",
-    "check": "node --check popup.js && node --check scraper/core.js && node --check scraper/marketplaces.js && npm test && npm run verify"
+    "check": "node --check popup.js && node --check background.js && node --check scraper/core.js && node --check scraper/marketplaces.js && npm test && npm run verify"
   },
   "devDependencies": {
     "jsdom": "^26.1.0"

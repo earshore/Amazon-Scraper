@@ -1,11 +1,11 @@
 # Amazon Product Insight
 
-**Amazon Product Insight v1.6.2** · [最新 Release](https://github.com/earshore/Amazon-Scraper/releases/tag/v1.6.2) · 非 Amazon 官方产品
+**Amazon Product Insight v1.6.3** · [最新 Release](https://github.com/earshore/Amazon-Scraper/releases/tag/v1.6.3) · 非 Amazon 官方产品
 
 基于 Manifest V3 的 Chrome 扩展。打开亚马逊**商品详情页**后，一键在本地解析当前页面上的商品信息（标题、ASIN、价格、品牌、主图、卖点描述、页面可见评论等），并导出为 JSON，便于个人研究、文案整理或下游分析。
 
 - **扩展名称**：Amazon Product Insight
-- **当前版本**：`1.6.2`
+- **当前版本**：`1.6.3`
 - **导出 schema**：`1.3.0`（详见 [docs/SCHEMA.md](docs/SCHEMA.md)）
 - **工具栏标题**：分析此商品
 - **UI 语言**：中文
@@ -21,6 +21,7 @@
 | [`scraper/marketplaces.js`](scraper/marketplaces.js) | 域名白名单、语言前缀、ASIN 解析（manifest / core / popup 共用） |
 | [`scraper/core.js`](scraper/core.js) | 可注入的抓取引擎（`scrapeAmazonPage`）；扩展注入页面执行，也可在 Node 测试中 `require` |
 | [`popup.js`](popup.js) / [`popup.html`](popup.html) | **仅 UI**：页面提示、注入核心脚本、预览、导出 JSON、缓存 |
+| [`background.js`](background.js) | 轻量 service worker（加快弹窗冷启动） |
 | [`test/fixtures/`](test/fixtures) + `npm test` | jsdom 夹具 + marketplaces 单测，锁定状态语义与字段解析 |
 | [`docs/QA-CHECKLIST.md`](docs/QA-CHECKLIST.md) | 手工发版 QA 清单 |
 | [`scripts/verify.mjs`](scripts/verify.mjs) | 打包一致性校验（版本号、架构、host 三表一致等） |
@@ -33,9 +34,9 @@
 ## 功能
 
 - **页面状态提示（page hint）**  
-  - 非亚马逊页面 / 非商品详情页 / `chrome://`、`edge://`、`about:` 等受限页：禁用「分析此页面」并给出提示  
-  - 商品详情页：显示「已就绪」及站点 hostname 与 ASIN
-- **一键分析当前商品页**：注入 `scraper/core.js` 读取当前页 DOM
+  - 非亚马逊页面 / 非商品详情页 / 受限页 / 语言不符：统一 strip 样式提示并禁用分析  
+  - 商品详情页且语言正确：显示「就绪」及 hostname、ASIN chips
+- **一键分析 / 重新分析**：注入 `scraper/marketplaces.js` + `scraper/core.js` 读取当前页 DOM
 - **解析字段**：`productTitle`、`asin`、`price`、`brand`、`main_image`、`feature_bullets`、`customer_reviews`
 - **抓取状态与覆盖率**  
   - `scrape_status`：`success` \| `partial` \| `failed`  
@@ -75,13 +76,13 @@
 
 ### 推荐：从 GitHub Release 安装
 
-1. 打开 [v1.6.2 Release](https://github.com/earshore/Amazon-Scraper/releases/tag/v1.6.2) 页面。
-2. 下载 `amazon-product-insight-1.6.2.zip`。
+1. 打开 [v1.6.3 Release](https://github.com/earshore/Amazon-Scraper/releases/tag/v1.6.3) 页面。
+2. 下载 `amazon-product-insight-1.6.3.zip`。
 3. 解压到本地任意目录。
 4. 打开 Chrome，访问 `chrome://extensions/`。
 5. 打开右上角 **开发者模式**。
 6. 点击 **加载已解压的扩展程序**，选择解压后的文件夹（内含 `manifest.json`）。
-7. 确认扩展列表中出现 **Amazon Product Insight**（版本 **1.6.2**）。
+7. 确认扩展列表中出现 **Amazon Product Insight**（版本 **1.6.3**）。
 
 安装后可在工具栏固定扩展图标；悬停标题为 **分析此商品**。
 
@@ -94,11 +95,11 @@
 3. 打开右上角 **开发者模式**。
 4. 点击 **加载已解压的扩展程序**。
 5. 选择本仓库根目录（包含 `manifest.json` 的文件夹）。
-6. 确认扩展列表中出现 **Amazon Product Insight**（版本 **1.6.2**）。
+6. 确认扩展列表中出现 **Amazon Product Insight**（版本 **1.6.3**）。
 
 ### 私有交付打包
 
-官方 Release 中的 zip 已按下列规则构建，可直接从 [Release 页面](https://github.com/earshore/Amazon-Scraper/releases/tag/v1.6.2) 下载使用。
+官方 Release 中的 zip 已按下列规则构建，可直接从 [Release 页面](https://github.com/earshore/Amazon-Scraper/releases/tag/v1.6.3) 下载使用。
 
 自行交付给他人时，请打 **运行时 zip**，不要整仓含 `node_modules`：
 
@@ -118,7 +119,7 @@
 
 ```bash
 npm run pack
-# → dist/amazon-product-insight-1.6.2.zip
+# → dist/amazon-product-insight-1.6.3.zip
 ```
 
 接收方：解压 → Chrome `chrome://extensions` → 开发者模式 → **加载已解压的扩展程序** → 选中解压目录。
@@ -310,7 +311,7 @@ npm run check            # 语法检查 + test + verify
 | [LICENSE](LICENSE) | MIT 许可证 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本变更记录 |
 | [docs/SCHEMA.md](docs/SCHEMA.md) | 导出 JSON schema `1.3.0` 字段说明 |
-| [docs/QA-CHECKLIST.md](docs/QA-CHECKLIST.md) | 发版 QA 清单（目标版本 1.6.2） |
+| [docs/QA-CHECKLIST.md](docs/QA-CHECKLIST.md) | 发版 QA 清单（目标版本 1.6.3） |
 
 ---
 
