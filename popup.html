@@ -193,23 +193,90 @@
         flex: none;
       }
 
+      /* Status area: feedback / report only — never look like a button */
       #status {
-        margin-bottom: 15px;
-        padding: 10px;
-        border-radius: 4px;
-        font-size: 13px;
         display: none;
+        margin: 0 0 10px;
+        padding: 8px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 400;
+        line-height: 1.45;
+        text-align: left;
+        cursor: default;
+        user-select: text;
+        pointer-events: none; /* non-interactive: not a control */
+        box-shadow: none;
+        border: 1px solid transparent;
+      }
+      /* Transient tip (toast) — e.g. cache cleared, loading */
+      #status.status-toast {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        background: #f7f8f8;
+        color: #0f1111;
+        border: 1px solid #e3e6e6;
+        border-left: 3px solid #879596;
+        padding: 7px 10px;
+        font-size: 12px;
+        font-weight: 400;
+        text-align: left;
+      }
+      #status.status-toast.ok {
+        background: #f4faf7;
+        border-color: #d4e8df;
+        border-left-color: #067d62;
+      }
+      #status.status-toast.info {
+        background: #f7f8f8;
+        border-color: #e3e6e6;
+        border-left-color: #565959;
+      }
+      #status.status-toast .toast-mark {
+        flex-shrink: 0;
+        width: 14px;
+        height: 14px;
+        margin-top: 1px;
+        border-radius: 50%;
+        background: #879596;
+        color: #fff;
+        font-size: 9px;
+        font-weight: 700;
+        line-height: 14px;
         text-align: center;
       }
+      #status.status-toast.ok .toast-mark {
+        background: #067d62;
+      }
+      #status.status-toast .toast-text {
+        flex: 1;
+        min-width: 0;
+        color: #0f1111;
+        font-weight: 400;
+      }
+      /* Scrape result panels (multi-line reports) */
+      #status.success {
+        background: #f4faf7;
+        color: #0f1111;
+        border: 1px solid #d4e8df;
+        border-left: 3px solid #067d62;
+        text-align: left;
+        pointer-events: auto; /* may contain nested lists only; still not a button */
+      }
+      #status.partial {
+        background: #fffbf0;
+        color: #0f1111;
+        border: 1px solid #f0e0a0;
+        border-left: 3px solid #b78103;
+        text-align: left;
+        pointer-events: auto;
+      }
       .success {
-        background: #edf7ed;
-        color: #1e4620;
+        /* legacy class hook kept for JS className assigns */
       }
       .partial {
-        background: #fff8e6;
-        color: #7a5b00;
-        border: 1px solid #f0e0a0;
-        text-align: left;
+        /* styled via #status.partial */
       }
       .warn-block {
         background: #fff8e6;

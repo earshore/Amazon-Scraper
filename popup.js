@@ -40,8 +40,43 @@ function resetStatusStyles() {
   status.style.background = "";
   status.style.color = "";
   status.style.border = "";
-  status.style.textAlign = "center";
-  status.className = "success";
+  status.style.textAlign = "";
+  status.style.display = "";
+  status.className = "";
+  if (status._toastTimer) {
+    clearTimeout(status._toastTimer);
+    status._toastTimer = null;
+  }
+}
+
+/**
+ * Non-interactive tip (toast). Must not look like a button.
+ * @param {string} message
+ * @param {{ kind?: "ok"|"info", autoHideMs?: number }} [options]
+ */
+function showToast(message, options = {}) {
+  const status = document.getElementById("status");
+  if (!status) return;
+  const kind = options.kind === "ok" ? "ok" : "info";
+  const autoHideMs =
+    typeof options.autoHideMs === "number" ? options.autoHideMs : 3200;
+  resetStatusStyles();
+  status.style.display = "flex";
+  status.className = `status-toast ${kind}`;
+  const mark = kind === "ok" ? "✓" : "i";
+  status.innerHTML = `<span class="toast-mark" aria-hidden="true">${mark}</span><span class="toast-text">${escapeHtml(
+    message
+  )}</span>`;
+  if (autoHideMs > 0) {
+    status._toastTimer = setTimeout(() => {
+      if (status.classList.contains("status-toast")) {
+        status.style.display = "none";
+        status.className = "";
+        status.innerHTML = "";
+      }
+      status._toastTimer = null;
+    }, autoHideMs);
+  }
 }
 
 function showBootError(message) {
@@ -364,12 +399,7 @@ async function runPageScrape(tabId) {
 }
 
 async function onScrapeClick() {
-  const status = document.getElementById("status");
-  resetStatusStyles();
-  if (status) {
-    status.style.display = "block";
-    status.innerText = "正在检查环境…";
-  }
+  showToast("正在检查环境…", { kind: "info", autoHideMs: 0 });
 
   try {
     const [tab] = await chrome.tabs.query({
@@ -475,13 +505,7 @@ function wireUiHandlers() {
         preview.style.display = "none";
         preview.innerHTML = "";
       }
-      const status = document.getElementById("status");
-      if (status) {
-        status.style.display = "block";
-        status.className = "success";
-        status.style.textAlign = "center";
-        status.innerText = "已清除本地缓存";
-      }
+      showToast("已清除本地缓存", { kind: "ok", autoHideMs: 3200 });
     });
   });
 
@@ -577,12 +601,7 @@ async function startScraping(tab) {
   scrapeInFlight = true;
   setScrapeEnabled(false);
 
-  const status = document.getElementById("status");
-  resetStatusStyles();
-  if (status) {
-    status.style.display = "block";
-    status.innerText = "正在解析商品与评论…";
-  }
+  showToast("正在解析商品与评论…", { kind: "info", autoHideMs: 0 });
   setLoaderVisible(true);
   setExportButtonsVisible(false);
 
