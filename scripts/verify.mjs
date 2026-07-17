@@ -129,8 +129,8 @@ assert(!popupHtml.includes('id="mdPreview"'), "mdPreview renamed");
 assert(!popupHtml.includes("Amazon Ember"), "no Amazon Ember font name");
 assert(!popupHtml.includes("copyJsonBtn"), "no copy JSON button");
 assert(popupHtml.includes('id="scrapeBtn"'), "primary scrape button");
-assert(popupHtml.includes('id="scrapeHint"'), "action helper under primary");
-assert(popupHtml.includes('class="actions"'), "standard actions stack");
+assert(popupHtml.includes('class="actions"'), "actions toolbar");
+assert(!popupHtml.includes("scrapeHint"), "no verbose action-hint block");
 assert(!popupHtml.includes("clearCacheBtn"), "no separate clear-cache button");
 assert(!popupHtml.includes("btn-main"), "no multi-line label inside button");
 assert(

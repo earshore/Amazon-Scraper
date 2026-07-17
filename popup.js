@@ -36,21 +36,20 @@ function setScrapeEnabled(enabled) {
 
 /**
  * One primary action: fresh analyze vs re-analyze (overwrites local cache).
- * Label on the button; context on the helper line under it (standard pattern).
+ * Short labels; detail only in title tooltip to save chrome for results.
  * @param {"fresh"|"refresh"} mode
  */
 function setPrimaryActionMode(mode) {
   const btn = document.getElementById("scrapeBtn");
-  const hint = document.getElementById("scrapeHint");
   if (!btn) return;
   const next = mode === "refresh" ? "refresh" : "fresh";
   btn.dataset.mode = next;
   if (next === "refresh") {
     btn.textContent = "重新分析";
-    if (hint) hint.textContent = "将覆盖本地缓存，并抓取当前页最新数据";
+    btn.title = "覆盖本地缓存，抓取当前页最新数据";
   } else {
-    btn.textContent = "分析此页面";
-    if (hint) hint.textContent = "解析当前商品页，结果可导出 JSON";
+    btn.textContent = "分析";
+    btn.title = "解析当前商品页 DOM，结果可导出 JSON";
   }
 }
 
@@ -827,10 +826,8 @@ function renderPreview(prod, metadata = {}) {
         <div class="section-title">评论（${reviews.length}）</div>
         ${reviewsHtml}
         <div class="scope-note">
-          评论范围：<code>${escapeHtml(scope)}</code> — 仅商品详情页当前 DOM 中可见的评论，不是全站分页评论。
-          数据仅在本地解析。抓取时间：${escapeHtml(
-            formatTimestamp(metadata.scrape_timestamp) || "—"
-          )}
+          <code>${escapeHtml(scope)}</code>
+          · ${escapeHtml(formatTimestamp(metadata.scrape_timestamp) || "—")}
         </div>
     `;
 
