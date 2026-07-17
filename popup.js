@@ -36,22 +36,21 @@ function setScrapeEnabled(enabled) {
 
 /**
  * One primary action: fresh analyze vs re-analyze (overwrites local cache).
- * Keeps information density via subtitle; no separate clear-cache control.
+ * Label on the button; context on the helper line under it (standard pattern).
  * @param {"fresh"|"refresh"} mode
  */
 function setPrimaryActionMode(mode) {
   const btn = document.getElementById("scrapeBtn");
-  const label = document.getElementById("scrapeBtnLabel");
-  const sub = document.getElementById("scrapeBtnSub");
-  if (!btn || !label || !sub) return;
+  const hint = document.getElementById("scrapeHint");
+  if (!btn) return;
   const next = mode === "refresh" ? "refresh" : "fresh";
   btn.dataset.mode = next;
   if (next === "refresh") {
-    label.textContent = "重新分析";
-    sub.textContent = "覆盖本地缓存 · 抓取当前页最新数据";
+    btn.textContent = "重新分析";
+    if (hint) hint.textContent = "将覆盖本地缓存，并抓取当前页最新数据";
   } else {
-    label.textContent = "分析此页面";
-    sub.textContent = "解析当前商品页 · 结果可导出 JSON";
+    btn.textContent = "分析此页面";
+    if (hint) hint.textContent = "解析当前商品页，结果可导出 JSON";
   }
 }
 
