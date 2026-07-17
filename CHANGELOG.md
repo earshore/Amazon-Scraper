@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.6.2] - 2026-07-17
 
+### Fixed
+
+- Popup open latency: lightweight `background.js` service worker keeps extension warm; defer page detection / cache preview / remote thumbnail until after first paint so the toolbar popup feels instant.
+
 ### Added
 
 - Shared `scraper/marketplaces.js` (domains, language prefixes, ASIN helpers) as single source of truth.

@@ -82,6 +82,9 @@ function formatTimestamp(iso) {
  */
 function updatePageHint(tab) {
   const hint = document.getElementById("pageHint");
+  if (!hint) {
+    return { ok: false, asin: null, host: "", reason: "no_hint" };
+  }
   const url = tab?.url || "";
   let host = "";
   try {
@@ -92,6 +95,7 @@ function updatePageHint(tab) {
 
   const asin = extractAsinFromUrl(url);
   const onAmazon = isAmazonHost(host);
+  hint.dataset.ready = "1";
 
   if (
     !url ||
@@ -225,6 +229,22 @@ function showSuccessStatus(prod, metadata, options = {}) {
   `;
 }
 
+/** Run after the next paint so the popup chrome is interactive first. */
+function afterFirstPaint(fn) {
+  const run = () => {
+    try {
+      fn();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+  if (typeof requestAnimationFrame === "function") {
+    requestAnimationFrame(() => setTimeout(run, 0));
+  } else {
+    setTimeout(run, 0);
+  }
+}
+
 function applyExportableResult(result, options = {}) {
   finalData = result;
   setExportButtonsVisible(true);
@@ -232,7 +252,12 @@ function applyExportableResult(result, options = {}) {
   if (preview) preview.style.display = "block";
   const prod = result.products[0];
   showSuccessStatus(prod, result.metadata, options);
-  renderPreview(prod, result.metadata);
+  // Defer heavy DOM + remote image so status/buttons paint first.
+  if (options.deferPreview) {
+    afterFirstPaint(() => renderPreview(prod, result.metadata));
+  } else {
+    renderPreview(prod, result.metadata);
+  }
 }
 
 function handleScrapeResult(result) {
@@ -446,13 +471,26 @@ function wireUiHandlers() {
   return true;
 }
 
+function showDetectingHint() {
+  const hint = document.getElementById("pageHint");
+  if (!hint) return;
+  // Avoid flashing if already filled by a fast path.
+  if (hint.dataset.ready === "1") return;
+  hint.className = "page-hint";
+  hint.style.display = "block";
+  hint.innerHTML = "<strong>正在检测当前页面…</strong>";
+}
+
 async function restoreCacheIfAny() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     const ctx = updatePageHint(tab);
+    const hint = document.getElementById("pageHint");
+    if (hint) hint.dataset.ready = "1";
 
     if (!ctx.ok || !ctx.asin) return;
 
+    // Storage + preview after page hint is visible.
     chrome.storage.local.get(["lastScrapedData"], (result) => {
       if (!result.lastScrapedData) return;
       const cachedData = result.lastScrapedData;
@@ -469,13 +507,17 @@ async function restoreCacheIfAny() {
         cachedProduct.asin === ctx.asin &&
         cachedMetadata.domain === ctx.host
       ) {
-        applyExportableResult(cachedData, { fromCache: true });
+        applyExportableResult(cachedData, {
+          fromCache: true,
+          deferPreview: true,
+        });
       }
     });
   } catch (err) {
     console.error("Auto-restore failed:", err);
     const hint = document.getElementById("pageHint");
     if (hint) {
+      hint.dataset.ready = "1";
       hint.className = "page-hint warn";
       hint.style.display = "block";
       hint.innerHTML =
@@ -494,8 +536,13 @@ function bootPopup() {
       setScrapeEnabled(false);
       return;
     }
+    // 1) Bind buttons immediately — popup must feel interactive on open.
     if (!wireUiHandlers()) return;
-    restoreCacheIfAny();
+    showDetectingHint();
+    // 2) After first paint: tabs.query + cache restore (may hit remote thumb CDN).
+    afterFirstPaint(() => {
+      restoreCacheIfAny();
+    });
   } catch (err) {
     console.error("Popup boot failed:", err);
     showBootError(
@@ -658,15 +705,16 @@ function renderPreview(prod, metadata = {}) {
         .join("")}</ul></div>`
     : "";
 
-  // Preview loads remote Amazon CDN images when present (see PRIVACY.md).
+  // Preview may load remote Amazon CDN images (see PRIVACY.md).
+  // Use data-src + deferred assign so popup open is not gated on network.
   const safeImage =
     prod.main_image && /^https:\/\//i.test(prod.main_image)
       ? prod.main_image
       : "";
   const thumbHtml = safeImage
-    ? `<img class="thumb" src="${escapeHtml(
+    ? `<img class="thumb" data-src="${escapeHtml(
         safeImage
-      )}" alt="${titleAlt}" referrerpolicy="no-referrer" />`
+      )}" alt="${titleAlt}" referrerpolicy="no-referrer" decoding="async" loading="lazy" />`
     : "";
 
   const priceLine = prod.price
@@ -728,5 +776,16 @@ function renderPreview(prod, metadata = {}) {
           )}
         </div>
     `;
+
+  // Kick off remote thumb after layout, so open latency is not network-bound.
+  afterFirstPaint(() => {
+    preview.querySelectorAll("img.thumb[data-src]").forEach((img) => {
+      const src = img.getAttribute("data-src");
+      if (src) {
+        img.setAttribute("src", src);
+        img.removeAttribute("data-src");
+      }
+    });
+  });
 }
 

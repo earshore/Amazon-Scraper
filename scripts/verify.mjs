@@ -28,6 +28,7 @@ const requiredFiles = [
   "manifest.json",
   "popup.html",
   "popup.js",
+  "background.js",
   "scraper/core.js",
   "scraper/marketplaces.js",
   "icons/icon16.png",
@@ -82,6 +83,14 @@ assert(manifest.action?.default_title === "分析此商品", "toolbar title zh")
 assert(
   manifest.minimum_chrome_version,
   "minimum_chrome_version set"
+);
+assert(
+  manifest.background?.service_worker === "background.js",
+  "service worker registered for warm popup"
+);
+assert(
+  fs.readFileSync(path.join(root, "background.js"), "utf8").length > 0,
+  "background.js non-empty"
 );
 
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));

@@ -23,6 +23,7 @@ const RUNTIME_FILES = [
   "manifest.json",
   "popup.html",
   "popup.js",
+  "background.js",
   "scraper/marketplaces.js",
   "scraper/core.js",
   "icons/icon16.png",
