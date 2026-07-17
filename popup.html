@@ -67,51 +67,53 @@
         color: var(--muted);
         white-space: nowrap;
       }
-      /* Compact page status — minimal visual footprint (status strip, not a card) */
+      /* Unified page status strip: ok / warn / detecting share one layout */
       .page-hint {
         display: none;
-        margin: 0 0 8px;
-        padding: 0;
-        color: #565959;
+        margin: 0 0 6px;
+        padding: 0 0 6px;
+        color: var(--muted);
         font-size: 11px;
         line-height: 1.35;
         text-align: left;
-      }
-      .page-hint.ok,
-      .page-hint.detecting {
-        display: none; /* toggled via style.display = flex|block */
-        align-items: center;
-        gap: 6px;
-        flex-wrap: wrap;
-        padding: 0 0 6px;
-        margin-bottom: 6px;
         border: none;
         border-bottom: 1px solid var(--line);
         border-radius: 0;
         background: transparent;
       }
-      .page-hint.ok {
-        /* ready: green signal without a filled box */
+      .page-hint.ok,
+      .page-hint.warn,
+      .page-hint.detecting {
+        /* JS sets display:flex */
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
       }
       .page-hint .ph-dot {
         width: 6px;
         height: 6px;
         border-radius: 50%;
-        background: #067d62;
+        background: var(--ok);
         flex-shrink: 0;
+      }
+      .page-hint.warn .ph-dot {
+        background: #b78103;
       }
       .page-hint.detecting .ph-dot {
         background: #879596;
-        opacity: 0.85;
       }
       .page-hint .ph-label {
         font-weight: 600;
         font-size: 11px;
-        color: #067d62;
+        color: var(--ok);
         letter-spacing: 0.01em;
+        flex-shrink: 0;
+      }
+      .page-hint.warn .ph-label {
+        color: #856404;
       }
       .page-hint.detecting .ph-label {
-        color: #565959;
+        color: var(--muted);
         font-weight: 500;
       }
       .page-hint .ph-meta {
@@ -119,17 +121,18 @@
         align-items: center;
         gap: 4px;
         min-width: 0;
+        flex: 1 1 auto;
         flex-wrap: wrap;
       }
       .page-hint .ph-chip {
         font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
         font-size: 10px;
         font-weight: 500;
-        color: #0f1111;
+        color: var(--text);
         background: #f0f2f2;
         padding: 1px 5px;
         border-radius: 3px;
-        max-width: 200px;
+        max-width: 160px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -137,32 +140,16 @@
       .page-hint .ph-chip.asin {
         letter-spacing: 0.02em;
       }
-      .page-hint.warn {
-        display: none;
-        padding: 6px 8px;
-        border-radius: 4px;
-        background: #fffbf0;
-        border: 1px solid #f0e0a0;
-        color: #0f1111;
-      }
-      .page-hint.warn .ph-title {
-        font-weight: 600;
-        font-size: 11px;
-        color: #856404;
-        margin: 0 0 2px;
-      }
-      .page-hint.warn .ph-detail {
-        margin: 0;
-        font-size: 11px;
-        font-weight: 400;
-        color: #565959;
-        line-height: 1.4;
-      }
-      .page-hint.warn code {
+      /* Secondary line of info — same strip, muted, no second card */
+      .page-hint .ph-note {
         font-size: 10px;
-        background: rgba(0, 0, 0, 0.04);
-        padding: 0 3px;
-        border-radius: 2px;
+        font-weight: 400;
+        color: var(--muted);
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 100%;
       }
       /* Compact toolbar: primary + secondary side by side */
       .actions {

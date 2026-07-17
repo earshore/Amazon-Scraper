@@ -131,24 +131,60 @@ function formatTimestamp(iso) {
   }
 }
 
-/** Compact warn body: title + one-line detail (minimal footprint). */
-function setPageHintWarn(hint, title, detailHtml) {
-  hint.className = "page-hint warn";
-  hint.style.display = "block";
-  hint.innerHTML = `<div class="ph-title">${escapeHtml(
-    title
-  )}</div><p class="ph-detail">${detailHtml}</p>`;
+/**
+ * Shared page-hint strip (ok / warn / detecting).
+ * Layout always: dot + label + optional meta (chips or muted note).
+ * @param {HTMLElement} hint
+ * @param {{ variant: "ok"|"warn"|"detecting", label: string, chips?: string[], note?: string }} opts
+ */
+function setPageHintStrip(hint, opts) {
+  const variant = opts.variant || "detecting";
+  const label = opts.label || "";
+  hint.className = `page-hint ${variant}`;
+  hint.style.display = "flex";
+
+  let metaHtml = "";
+  if (opts.chips && opts.chips.length) {
+    metaHtml = `<span class="ph-meta">${opts.chips
+      .map((c) => {
+        const text = c.text || c;
+        const title = c.title || text;
+        const cls = c.cls ? ` ph-chip ${c.cls}` : " ph-chip";
+        return `<span class="${cls.trim()}" title="${escapeHtml(
+          title
+        )}">${escapeHtml(text)}</span>`;
+      })
+      .join("")}</span>`;
+  } else if (opts.note) {
+    metaHtml = `<span class="ph-meta"><span class="ph-note" title="${escapeHtml(
+      opts.note
+    )}">${escapeHtml(opts.note)}</span></span>`;
+  }
+
+  hint.innerHTML = `<span class="ph-dot" aria-hidden="true"></span><span class="ph-label">${escapeHtml(
+    label
+  )}</span>${metaHtml}`;
 }
 
-/** Ready strip: status dot + label + host/ASIN chips (no CTA copy — button is primary). */
+/** Warn / blocked: same strip as ready, amber signal + short note. */
+function setPageHintWarn(hint, title, note) {
+  setPageHintStrip(hint, {
+    variant: "warn",
+    label: title,
+    note: note || "",
+  });
+}
+
+/** Ready: green signal + host / ASIN chips. */
 function setPageHintReady(hint, host, asin) {
-  hint.className = "page-hint ok";
-  hint.style.display = "flex";
-  hint.innerHTML = `<span class="ph-dot" aria-hidden="true"></span><span class="ph-label">就绪</span><span class="ph-meta"><span class="ph-chip" title="站点">${escapeHtml(
-    host
-  )}</span><span class="ph-chip asin" title="ASIN">${escapeHtml(
-    asin
-  )}</span></span>`;
+  setPageHintStrip(hint, {
+    variant: "ok",
+    label: "就绪",
+    chips: [
+      { text: host, title: "站点" },
+      { text: asin, title: "ASIN", cls: "asin" },
+    ],
+  });
 }
 
 /**
@@ -177,11 +213,7 @@ function updatePageHint(tab) {
     url.startsWith("edge://") ||
     url.startsWith("about:")
   ) {
-    setPageHintWarn(
-      hint,
-      "无法在此页面使用",
-      "请打开亚马逊商品详情页（URL 含 <code>/dp/ASIN</code>）。"
-    );
+    setPageHintWarn(hint, "不可用", "请打开亚马逊商品详情页（含 /dp/ASIN）");
     setScrapeEnabled(false);
     return { ok: false, asin: null, host, reason: "restricted" };
   }
@@ -190,18 +222,16 @@ function updatePageHint(tab) {
     setPageHintWarn(
       hint,
       "非支持站点",
-      "请在 amazon.com / amazon.de 等支持站点的商品页使用。"
+      host
+        ? `${host} · 请改用 amazon.com / .de 等商品页`
+        : "请改用 amazon.com / amazon.de 等商品页"
     );
     setScrapeEnabled(false);
     return { ok: false, asin: null, host, reason: "not_amazon" };
   }
 
   if (!asin) {
-    setPageHintWarn(
-      hint,
-      "不是商品详情页",
-      "需要 <code>/dp/</code>、<code>/gp/product/</code> 或 <code>/gp/aw/d/</code>。"
-    );
+    setPageHintWarn(hint, "非商品页", "需要 /dp/、/gp/product/ 或 /gp/aw/d/");
     setScrapeEnabled(false);
     return { ok: false, asin: null, host, reason: "not_product" };
   }
@@ -523,10 +553,7 @@ function showDetectingHint() {
   if (!hint) return;
   // Avoid flashing if already filled by a fast path.
   if (hint.dataset.ready === "1") return;
-  hint.className = "page-hint detecting";
-  hint.style.display = "flex";
-  hint.innerHTML =
-    '<span class="ph-dot" aria-hidden="true"></span><span class="ph-label">检测中…</span>';
+  setPageHintStrip(hint, { variant: "detecting", label: "检测中…" });
 }
 
 async function restoreCacheIfAny() {
