@@ -660,11 +660,12 @@ function showWarning(summary, detail, onContinue) {
   status.style.color = "#856404";
   status.style.border = "1px solid #FFEEBA";
   status.style.textAlign = "left";
+  status.style.pointerEvents = "auto";
   status.innerHTML = `
-        <div style="font-weight:bold; margin-bottom:4px;">${escapeHtml(
+        <div style="font-weight:600; margin-bottom:4px;font-size:11px;">${escapeHtml(
           summary
         )}</div>
-        <div style="font-size:12px; margin-bottom:8px;">${escapeHtml(
+        <div style="font-size:11px; margin-bottom:6px;">${escapeHtml(
           detail
         )}</div>
         <button id="forceContinueBtn" type="button" class="force-btn">仍要分析</button>
