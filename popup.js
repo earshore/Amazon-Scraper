@@ -36,11 +36,22 @@ function setScrapeEnabled(enabled) {
 
 function resetStatusStyles() {
   const status = document.getElementById("status");
+  if (!status) return;
   status.style.background = "";
   status.style.color = "";
   status.style.border = "";
   status.style.textAlign = "center";
   status.className = "success";
+}
+
+function showBootError(message) {
+  const card = document.querySelector(".card") || document.body;
+  const box = document.createElement("div");
+  box.setAttribute("role", "alert");
+  box.style.cssText =
+    "margin:12px 0;padding:12px;background:#FFF5F5;color:#C53030;border:1px solid #FEB2B2;border-radius:6px;font-size:13px;line-height:1.45;";
+  box.textContent = message;
+  card.insertBefore(box, card.firstChild);
 }
 
 function extractAsinFromUrl(url) {
@@ -310,50 +321,13 @@ async function runPageScrape(tabId) {
   return results && results[0] ? results[0].result : null;
 }
 
-document.addEventListener("DOMContentLoaded", async () => {
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    const ctx = updatePageHint(tab);
-
-    if (!ctx.ok || !ctx.asin) return;
-
-    chrome.storage.local.get(["lastScrapedData"], (result) => {
-      if (!result.lastScrapedData) return;
-      const cachedData = result.lastScrapedData;
-      if (!isExportableResult(cachedData)) {
-        chrome.storage.local.remove(["lastScrapedData"]);
-        return;
-      }
-      if (!cachedData.products || !cachedData.products.length) return;
-
-      const cachedProduct = cachedData.products[0];
-      const cachedMetadata = cachedData.metadata || {};
-
-      if (
-        cachedProduct.asin === ctx.asin &&
-        cachedMetadata.domain === ctx.host
-      ) {
-        applyExportableResult(cachedData, { fromCache: true });
-      }
-    });
-  } catch (err) {
-    console.error("Auto-restore failed:", err);
-    const hint = document.getElementById("pageHint");
-    if (hint) {
-      hint.className = "page-hint warn";
-      hint.style.display = "block";
-      hint.innerHTML =
-        "<strong>无法读取当前标签页</strong>请刷新亚马逊商品页后重试。";
-    }
-    setScrapeEnabled(false);
-  }
-});
-
-document.getElementById("scrapeBtn").addEventListener("click", async () => {
+async function onScrapeClick() {
   const status = document.getElementById("status");
   resetStatusStyles();
-  status.style.display = "block";
-  status.innerText = "正在检查环境…";
+  if (status) {
+    status.style.display = "block";
+    status.innerText = "正在检查环境…";
+  }
 
   try {
     const [tab] = await chrome.tabs.query({
@@ -400,10 +374,7 @@ document.getElementById("scrapeBtn").addEventListener("click", async () => {
 
     const prefixes = mp ? mp.getLangPrefixes(host) : null;
 
-    if (
-      prefixes &&
-      !prefixes.some((prefix) => lang.startsWith(prefix))
-    ) {
+    if (prefixes && !prefixes.some((prefix) => lang.startsWith(prefix))) {
       showWarning(
         "语言设置不匹配",
         `检测到站点 ${host} 当前语言为 ${lang}。建议切换为站点常用语言后再分析，以提高卖点/评论解析成功率。`,
@@ -414,9 +385,130 @@ document.getElementById("scrapeBtn").addEventListener("click", async () => {
 
     startScraping(tab);
   } catch (err) {
-    showError("插件运行错误", err.message);
+    showError("插件运行错误", err.message || String(err));
   }
-});
+}
+
+function wireUiHandlers() {
+  const scrapeBtn = document.getElementById("scrapeBtn");
+  const downloadBtn = document.getElementById("downloadBtn");
+  const clearCacheBtn = document.getElementById("clearCacheBtn");
+
+  if (!scrapeBtn || !downloadBtn) {
+    showBootError(
+      "弹窗 UI 未正确加载（缺少按钮节点）。请在 chrome://extensions 中「重新加载」扩展，并确认加载目录为含 manifest.json 的仓库根目录。"
+    );
+    return false;
+  }
+
+  scrapeBtn.addEventListener("click", () => {
+    onScrapeClick().catch((err) =>
+      showError("插件运行错误", err.message || String(err))
+    );
+  });
+
+  downloadBtn.addEventListener("click", () => {
+    if (!isExportableResult(finalData)) {
+      showError("下载失败", "没有可供下载的有效数据，请重新分析。");
+      return;
+    }
+    try {
+      downloadTextFile(
+        JSON.stringify(finalData, null, 2),
+        `${getExportBasename()}.json`,
+        "application/json"
+      );
+    } catch (err) {
+      showError("下载出错", err.message || String(err));
+    }
+  });
+
+  clearCacheBtn?.addEventListener("click", () => {
+    if (!window.confirm("确定清除本地缓存的上次分析结果？")) return;
+    chrome.storage.local.remove(["lastScrapedData"], () => {
+      finalData = null;
+      setExportButtonsVisible(false);
+      const preview = document.getElementById("resultPreview");
+      if (preview) {
+        preview.style.display = "none";
+        preview.innerHTML = "";
+      }
+      const status = document.getElementById("status");
+      if (status) {
+        status.style.display = "block";
+        status.className = "success";
+        status.style.textAlign = "center";
+        status.innerText = "已清除本地缓存";
+      }
+    });
+  });
+
+  return true;
+}
+
+async function restoreCacheIfAny() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const ctx = updatePageHint(tab);
+
+    if (!ctx.ok || !ctx.asin) return;
+
+    chrome.storage.local.get(["lastScrapedData"], (result) => {
+      if (!result.lastScrapedData) return;
+      const cachedData = result.lastScrapedData;
+      if (!isExportableResult(cachedData)) {
+        chrome.storage.local.remove(["lastScrapedData"]);
+        return;
+      }
+      if (!cachedData.products || !cachedData.products.length) return;
+
+      const cachedProduct = cachedData.products[0];
+      const cachedMetadata = cachedData.metadata || {};
+
+      if (
+        cachedProduct.asin === ctx.asin &&
+        cachedMetadata.domain === ctx.host
+      ) {
+        applyExportableResult(cachedData, { fromCache: true });
+      }
+    });
+  } catch (err) {
+    console.error("Auto-restore failed:", err);
+    const hint = document.getElementById("pageHint");
+    if (hint) {
+      hint.className = "page-hint warn";
+      hint.style.display = "block";
+      hint.innerHTML =
+        "<strong>无法读取当前标签页</strong>请刷新亚马逊商品页后重试。";
+    }
+    setScrapeEnabled(false);
+  }
+}
+
+function bootPopup() {
+  try {
+    if (!mp) {
+      showBootError(
+        "核心脚本 scraper/marketplaces.js 未加载。请重新加载扩展，并确认扩展目录包含 scraper/ 文件夹。"
+      );
+      setScrapeEnabled(false);
+      return;
+    }
+    if (!wireUiHandlers()) return;
+    restoreCacheIfAny();
+  } catch (err) {
+    console.error("Popup boot failed:", err);
+    showBootError(
+      "弹窗初始化失败：" + (err && err.message ? err.message : String(err))
+    );
+  }
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bootPopup);
+} else {
+  bootPopup();
+}
 
 async function startScraping(tab) {
   if (scrapeInFlight) return;
@@ -425,8 +517,10 @@ async function startScraping(tab) {
 
   const status = document.getElementById("status");
   resetStatusStyles();
-  status.style.display = "block";
-  status.innerText = "正在解析商品与评论…";
+  if (status) {
+    status.style.display = "block";
+    status.innerText = "正在解析商品与评论…";
+  }
   setLoaderVisible(true);
   setExportButtonsVisible(false);
 
@@ -457,6 +551,10 @@ async function startScraping(tab) {
 
 function showWarning(summary, detail, onContinue) {
   const status = document.getElementById("status");
+  if (!status) {
+    showBootError(`${summary}: ${detail || ""}`);
+    return;
+  }
   status.style.display = "block";
   status.style.background = "#FFF3CD";
   status.style.color = "#856404";
@@ -472,17 +570,23 @@ function showWarning(summary, detail, onContinue) {
         <button id="forceContinueBtn" type="button" class="force-btn">仍要分析</button>
     `;
   const btn = document.getElementById("forceContinueBtn");
-  btn.onclick = onContinue;
-  try {
-    btn.focus();
-  } catch {
-    /* ignore */
+  if (btn) {
+    btn.onclick = onContinue;
+    try {
+      btn.focus();
+    } catch {
+      /* ignore */
+    }
   }
 }
 
 function showError(summary, detail) {
   setLoaderVisible(false);
   const status = document.getElementById("status");
+  if (!status) {
+    showBootError(`${summary}: ${detail || ""}`);
+    return;
+  }
   status.style.display = "block";
   status.style.background = "#FFF5F5";
   status.style.color = "#C53030";
@@ -626,36 +730,3 @@ function renderPreview(prod, metadata = {}) {
     `;
 }
 
-document.getElementById("downloadBtn").addEventListener("click", () => {
-  if (!isExportableResult(finalData)) {
-    showError("下载失败", "没有可供下载的有效数据，请重新分析。");
-    return;
-  }
-  try {
-    downloadTextFile(
-      JSON.stringify(finalData, null, 2),
-      `${getExportBasename()}.json`,
-      "application/json"
-    );
-  } catch (err) {
-    showError("下载出错", err.message);
-  }
-});
-
-document.getElementById("clearCacheBtn")?.addEventListener("click", () => {
-  if (!window.confirm("确定清除本地缓存的上次分析结果？")) return;
-  chrome.storage.local.remove(["lastScrapedData"], () => {
-    finalData = null;
-    setExportButtonsVisible(false);
-    const preview = document.getElementById("resultPreview");
-    if (preview) {
-      preview.style.display = "none";
-      preview.innerHTML = "";
-    }
-    const status = document.getElementById("status");
-    status.style.display = "block";
-    status.className = "success";
-    status.style.textAlign = "center";
-    status.innerText = "已清除本地缓存";
-  });
-});
