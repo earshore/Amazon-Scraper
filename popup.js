@@ -77,6 +77,26 @@ function formatTimestamp(iso) {
   }
 }
 
+/** Compact warn body: title + one-line detail (minimal footprint). */
+function setPageHintWarn(hint, title, detailHtml) {
+  hint.className = "page-hint warn";
+  hint.style.display = "block";
+  hint.innerHTML = `<div class="ph-title">${escapeHtml(
+    title
+  )}</div><p class="ph-detail">${detailHtml}</p>`;
+}
+
+/** Ready strip: status dot + label + host/ASIN chips (no CTA copy — button is primary). */
+function setPageHintReady(hint, host, asin) {
+  hint.className = "page-hint ok";
+  hint.style.display = "flex";
+  hint.innerHTML = `<span class="ph-dot" aria-hidden="true"></span><span class="ph-label">就绪</span><span class="ph-meta"><span class="ph-chip" title="站点">${escapeHtml(
+    host
+  )}</span><span class="ph-chip asin" title="ASIN">${escapeHtml(
+    asin
+  )}</span></span>`;
+}
+
 /**
  * @returns {{ ok: boolean, asin: string|null, host: string, reason: string }}
  */
@@ -103,39 +123,36 @@ function updatePageHint(tab) {
     url.startsWith("edge://") ||
     url.startsWith("about:")
   ) {
-    hint.className = "page-hint warn";
-    hint.style.display = "block";
-    hint.innerHTML =
-      "<strong>无法在此页面使用</strong>请先打开亚马逊<strong>商品详情页</strong>（URL 含 <code>/dp/ASIN</code>），再点击「分析此页面」。";
+    setPageHintWarn(
+      hint,
+      "无法在此页面使用",
+      "请打开亚马逊商品详情页（URL 含 <code>/dp/ASIN</code>）。"
+    );
     setScrapeEnabled(false);
     return { ok: false, asin: null, host, reason: "restricted" };
   }
 
   if (!onAmazon) {
-    hint.className = "page-hint warn";
-    hint.style.display = "block";
-    hint.innerHTML =
-      "<strong>当前不是亚马逊页面</strong>本扩展仅在支持的亚马逊站点商品详情页工作。请打开 amazon.com / amazon.de 等站点的商品页。";
+    setPageHintWarn(
+      hint,
+      "非支持站点",
+      "请在 amazon.com / amazon.de 等支持站点的商品页使用。"
+    );
     setScrapeEnabled(false);
     return { ok: false, asin: null, host, reason: "not_amazon" };
   }
 
   if (!asin) {
-    hint.className = "page-hint warn";
-    hint.style.display = "block";
-    hint.innerHTML =
-      "<strong>请打开商品详情页</strong>已检测到亚马逊站点，但当前页不是商品详情（缺少 <code>/dp/ASIN</code>、<code>/gp/product/ASIN</code> 或 <code>/gp/aw/d/ASIN</code>）。搜索结果页、购物车等无法分析。";
+    setPageHintWarn(
+      hint,
+      "不是商品详情页",
+      "需要 <code>/dp/</code>、<code>/gp/product/</code> 或 <code>/gp/aw/d/</code>。"
+    );
     setScrapeEnabled(false);
     return { ok: false, asin: null, host, reason: "not_product" };
   }
 
-  hint.className = "page-hint ok";
-  hint.style.display = "block";
-  hint.innerHTML = `<strong>已就绪</strong>站点 <code>${escapeHtml(
-    host
-  )}</code> · ASIN <code>${escapeHtml(
-    asin
-  )}</code> · 点击「分析此页面」开始。`;
+  setPageHintReady(hint, host, asin);
   setScrapeEnabled(true);
   return { ok: true, asin, host, reason: "ready" };
 }
@@ -476,9 +493,10 @@ function showDetectingHint() {
   if (!hint) return;
   // Avoid flashing if already filled by a fast path.
   if (hint.dataset.ready === "1") return;
-  hint.className = "page-hint";
-  hint.style.display = "block";
-  hint.innerHTML = "<strong>正在检测当前页面…</strong>";
+  hint.className = "page-hint detecting";
+  hint.style.display = "flex";
+  hint.innerHTML =
+    '<span class="ph-dot" aria-hidden="true"></span><span class="ph-label">检测中…</span>';
 }
 
 async function restoreCacheIfAny() {
@@ -518,10 +536,7 @@ async function restoreCacheIfAny() {
     const hint = document.getElementById("pageHint");
     if (hint) {
       hint.dataset.ready = "1";
-      hint.className = "page-hint warn";
-      hint.style.display = "block";
-      hint.innerHTML =
-        "<strong>无法读取当前标签页</strong>请刷新亚马逊商品页后重试。";
+      setPageHintWarn(hint, "无法读取标签页", "请刷新商品页后重试。");
     }
     setScrapeEnabled(false);
   }

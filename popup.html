@@ -37,29 +37,102 @@
         font-size: 11px;
         color: #565959;
       }
+      /* Compact page status — minimal visual footprint (status strip, not a card) */
       .page-hint {
         display: none;
-        margin-bottom: 12px;
-        padding: 12px;
-        border-radius: 6px;
-        background: #f0f7ff;
-        border: 1px solid #cce0ff;
-        color: #0f1111;
-        font-size: 13px;
-        line-height: 1.5;
+        margin: 0 0 8px;
+        padding: 0;
+        color: #565959;
+        font-size: 11px;
+        line-height: 1.35;
         text-align: left;
       }
-      .page-hint strong {
-        display: block;
-        margin-bottom: 4px;
+      .page-hint.ok,
+      .page-hint.detecting {
+        display: none; /* toggled via style.display = flex|block */
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        padding: 0 0 8px;
+        margin-bottom: 8px;
+        border: none;
+        border-bottom: 1px solid #e7e9ec;
+        border-radius: 0;
+        background: transparent;
       }
       .page-hint.ok {
-        background: #edf7ed;
-        border-color: #c6e6c6;
+        /* ready: green signal without a filled box */
+      }
+      .page-hint .ph-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #067d62;
+        flex-shrink: 0;
+      }
+      .page-hint.detecting .ph-dot {
+        background: #879596;
+        opacity: 0.85;
+      }
+      .page-hint .ph-label {
+        font-weight: 600;
+        font-size: 11px;
+        color: #067d62;
+        letter-spacing: 0.01em;
+      }
+      .page-hint.detecting .ph-label {
+        color: #565959;
+        font-weight: 500;
+      }
+      .page-hint .ph-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
+        flex-wrap: wrap;
+      }
+      .page-hint .ph-chip {
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        font-size: 10px;
+        font-weight: 500;
+        color: #0f1111;
+        background: #f0f2f2;
+        padding: 1px 5px;
+        border-radius: 3px;
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .page-hint .ph-chip.asin {
+        letter-spacing: 0.02em;
       }
       .page-hint.warn {
-        background: #fff8e6;
-        border-color: #f0e0a0;
+        display: none;
+        padding: 6px 8px;
+        border-radius: 4px;
+        background: #fffbf0;
+        border: 1px solid #f0e0a0;
+        color: #0f1111;
+      }
+      .page-hint.warn .ph-title {
+        font-weight: 600;
+        font-size: 11px;
+        color: #856404;
+        margin: 0 0 2px;
+      }
+      .page-hint.warn .ph-detail {
+        margin: 0;
+        font-size: 11px;
+        font-weight: 400;
+        color: #565959;
+        line-height: 1.4;
+      }
+      .page-hint.warn code {
+        font-size: 10px;
+        background: rgba(0, 0, 0, 0.04);
+        padding: 0 3px;
+        border-radius: 2px;
       }
       .btn-group {
         display: flex;
