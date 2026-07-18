@@ -151,6 +151,14 @@ assert(
     !/afterFirstPaint\(\s*\(\)\s*=>\s*\{\s*restoreCacheIfAny/.test(popupJs),
   "tab probe not deferred behind afterFirstPaint"
 );
+assert(
+  popupJs.includes("deferReady") && popupJs.includes("await_language"),
+  "no false-ready: product pages defer 就绪 until language gate"
+);
+assert(
+  popupJs.includes("无法校验语言"),
+  "language probe failure is a terminal UI state (fail-closed)"
+);
 assert(!popupHtml.includes("scrapeHint"), "no verbose action-hint block");
 assert(!popupHtml.includes("clearCacheBtn"), "no separate clear-cache button");
 assert(!popupHtml.includes("btn-main"), "no multi-line label inside button");

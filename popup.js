@@ -245,9 +245,19 @@ function setPageHintReady(hint, host, asin) {
 }
 
 /**
+ * Update page-hint strip from the active tab URL.
+ *
+ * Product honesty: "就绪" + enabled analyze only when the page is a product URL
+ * AND the caller is not still waiting on the language hard-gate.
+ *
+ * @param {chrome.tabs.Tab|undefined|null} tab
+ * @param {{ deferReady?: boolean }} [options]
+ *   deferReady — URL looks scrapeable, but language not verified yet:
+ *   keep "检测中…" (with host/ASIN chips), button disabled, dataset.ready !== "1".
  * @returns {{ ok: boolean, asin: string|null, host: string, reason: string }}
  */
-function updatePageHint(tab) {
+function updatePageHint(tab, options = {}) {
+  const deferReady = Boolean(options.deferReady);
   const hint = document.getElementById("pageHint");
   if (!hint) {
     return { ok: false, asin: null, host: "", reason: "no_hint" };
@@ -262,7 +272,6 @@ function updatePageHint(tab) {
 
   const asin = extractAsinFromUrl(url);
   const onAmazon = isAmazonHost(host);
-  hint.dataset.ready = "1";
 
   if (
     !url ||
@@ -270,12 +279,14 @@ function updatePageHint(tab) {
     url.startsWith("edge://") ||
     url.startsWith("about:")
   ) {
+    hint.dataset.ready = "1";
     setPageHintWarn(hint, "不可用", "请打开亚马逊商品详情页（含 /dp/ASIN）");
     setScrapeEnabled(false);
     return { ok: false, asin: null, host, reason: "restricted" };
   }
 
   if (!onAmazon) {
+    hint.dataset.ready = "1";
     setPageHintWarn(
       hint,
       "非支持站点",
@@ -288,11 +299,28 @@ function updatePageHint(tab) {
   }
 
   if (!asin) {
+    hint.dataset.ready = "1";
     setPageHintWarn(hint, "非商品页", "需要 /dp/、/gp/product/ 或 /gp/aw/d/");
     setScrapeEnabled(false);
     return { ok: false, asin: null, host, reason: "not_product" };
   }
 
+  // Product URL — do not claim 就绪 until language gate has passed (unless caller opts in).
+  if (deferReady) {
+    hint.dataset.ready = "0";
+    setPageHintStrip(hint, {
+      variant: "detecting",
+      label: "检测中…",
+      chips: [
+        { text: host, title: "站点" },
+        { text: asin, title: "ASIN", cls: "asin" },
+      ],
+    });
+    setScrapeEnabled(false);
+    return { ok: true, asin, host, reason: "await_language" };
+  }
+
+  hint.dataset.ready = "1";
   setPageHintReady(hint, host, asin);
   setScrapeEnabled(true);
   return { ok: true, asin, host, reason: "ready" };
@@ -505,6 +533,8 @@ async function runPageScrape(tabId) {
 }
 
 async function onScrapeClick() {
+  // Hold disabled until language hard-gate passes (no false-ready flash).
+  setScrapeEnabled(false);
   showToast("正在检查环境…", { kind: "info", autoHideMs: 0 });
 
   try {
@@ -518,7 +548,7 @@ async function onScrapeClick() {
       return;
     }
 
-    const ctx = updatePageHint(tab);
+    const ctx = updatePageHint(tab, { deferReady: true });
     if (!ctx.ok) {
       showError(
         "页面不支持",
@@ -531,6 +561,11 @@ async function onScrapeClick() {
 
     const pageMeta = await readPageLangAndHost(tab.id);
     if (!pageMeta) {
+      const hint = document.getElementById("pageHint");
+      if (hint) {
+        hint.dataset.ready = "1";
+        setPageHintWarn(hint, "无法校验语言", "请刷新商品页后重试。");
+      }
       showError("连接失败", "无法读取页面环境信息。");
       return;
     }
@@ -538,6 +573,15 @@ async function onScrapeClick() {
     const { lang, host } = pageMeta;
 
     if (!isAmazonHost(host)) {
+      const hint = document.getElementById("pageHint");
+      if (hint) {
+        hint.dataset.ready = "1";
+        setPageHintWarn(
+          hint,
+          "非支持站点",
+          `${host} · 请改用 amazon.com / .de 等商品页`
+        );
+      }
       showError("页面不支持", "请在支持的亚马逊商品详情页使用本扩展。");
       return;
     }
@@ -554,8 +598,11 @@ async function onScrapeClick() {
       return;
     }
 
+    // Language verified — claim ready, then scrape (startScraping disables again).
+    updatePageHint(tab);
     startScraping(tab);
   } catch (err) {
+    setScrapeEnabled(false);
     showError("插件运行错误", err.message || String(err));
   }
 }
@@ -623,8 +670,13 @@ function storageLocalGet(keys) {
 }
 
 /**
- * After shell is painted: resolve active tab → page hint → language gate + cache.
- * Language probe and storage read run in parallel so open is not serial I/O.
+ * After shell is painted: resolve active tab → URL gate → language gate → ready + cache.
+ *
+ * State machine (product honesty — no false "就绪"):
+ *   检测中… → terminal warn (bad URL) | 检测中…+chips (await language)
+ *            → 语言不符 / 无法校验语言 | 就绪 (URL + language ok) + optional cache
+ *
+ * Language probe and storage read run in parallel; ready is claimed only after lang OK.
  */
 async function restoreCacheIfAny() {
   try {
@@ -640,14 +692,13 @@ async function restoreCacheIfAny() {
       });
       tab = tabs && tabs[0];
     }
-    // Cheap URL-only gate first so "就绪 / 不可用" replaces "检测中" ASAP.
-    const ctx = updatePageHint(tab);
+    // URL gate only — never claim 就绪 here (language still pending on product pages).
+    const ctx = updatePageHint(tab, { deferReady: true });
     const hint = document.getElementById("pageHint");
-    if (hint) hint.dataset.ready = "1";
 
     if (!ctx.ok || !ctx.asin || !tab?.id) return;
 
-    // Parallel: locale hard-gate + local cache (neither blocks the other).
+    // Parallel I/O: language hard-gate + cache read (ready still deferred).
     const [pageMeta, storageResult] = await Promise.all([
       readPageLangAndHost(tab.id).catch((langErr) => {
         console.warn("Language probe failed:", langErr);
@@ -656,14 +707,40 @@ async function restoreCacheIfAny() {
       storageLocalGet(["lastScrapedData"]),
     ]);
 
-    if (pageMeta && isAmazonHost(pageMeta.host)) {
-      const langGate = evaluatePageLanguage(pageMeta.host, pageMeta.lang);
-      if (!langGate.ok) {
-        if (hint) setPageHintWarn(hint, "语言不符", langGate.note);
-        setScrapeEnabled(false);
-        return;
+    if (!pageMeta) {
+      if (hint) {
+        hint.dataset.ready = "1";
+        setPageHintWarn(hint, "无法校验语言", "请刷新商品页后重试。");
       }
+      setScrapeEnabled(false);
+      return;
     }
+
+    if (!isAmazonHost(pageMeta.host)) {
+      if (hint) {
+        hint.dataset.ready = "1";
+        setPageHintWarn(
+          hint,
+          "非支持站点",
+          `${pageMeta.host} · 请改用 amazon.com / .de 等商品页`
+        );
+      }
+      setScrapeEnabled(false);
+      return;
+    }
+
+    const langGate = evaluatePageLanguage(pageMeta.host, pageMeta.lang);
+    if (!langGate.ok) {
+      if (hint) {
+        hint.dataset.ready = "1";
+        setPageHintWarn(hint, "语言不符", langGate.note);
+      }
+      setScrapeEnabled(false);
+      return;
+    }
+
+    // URL + language verified — only now claim 就绪 and enable analyze.
+    updatePageHint(tab);
 
     const cachedData = storageResult.lastScrapedData;
     if (!cachedData) return;
@@ -763,15 +840,17 @@ async function startScraping(tab) {
   } finally {
     setLoaderVisible(false);
     scrapeInFlight = false;
+    // Re-sync strip from URL. Language was verified at click; keep button disabled
+    // if the tab is no longer a product page (do not fail-open on query errors).
     try {
       const [active] = await chrome.tabs.query({
         active: true,
         currentWindow: true,
       });
       if (active) updatePageHint(active);
-      else setScrapeEnabled(true);
+      else setScrapeEnabled(false);
     } catch {
-      setScrapeEnabled(true);
+      setScrapeEnabled(false);
     }
   }
 }
