@@ -9,6 +9,16 @@ if (!mp) {
   );
 }
 
+/**
+ * Kick off active-tab query as soon as popup.js evaluates (before boot wiring).
+ * Overlaps with handler binding so "检测中 → 就绪" is not delayed by setup.
+ * @type {Promise<chrome.tabs.Tab[]>}
+ */
+const earlyActiveTabQuery =
+  typeof chrome !== "undefined" && chrome.tabs?.query
+    ? chrome.tabs.query({ active: true, currentWindow: true })
+    : Promise.resolve([]);
+
 function escapeHtml(unsafe) {
   if (!unsafe) return "";
   return String(unsafe)
@@ -596,53 +606,86 @@ function showDetectingHint() {
   setPageHintStrip(hint, { variant: "detecting", label: "检测中…" });
 }
 
+/**
+ * chrome.storage.local.get as a Promise (parallel with language probe on open).
+ * @param {string[]} keys
+ * @returns {Promise<Record<string, unknown>>}
+ */
+function storageLocalGet(keys) {
+  return new Promise((resolve) => {
+    try {
+      chrome.storage.local.get(keys, (result) => resolve(result || {}));
+    } catch (err) {
+      console.warn("storage.local.get failed:", err);
+      resolve({});
+    }
+  });
+}
+
+/**
+ * After shell is painted: resolve active tab → page hint → language gate + cache.
+ * Language probe and storage read run in parallel so open is not serial I/O.
+ */
 async function restoreCacheIfAny() {
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    // Prefer the in-flight query started at script load; fall back if it failed.
+    let tab;
+    try {
+      const tabs = await earlyActiveTabQuery;
+      tab = tabs && tabs[0];
+    } catch {
+      const tabs = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      tab = tabs && tabs[0];
+    }
+    // Cheap URL-only gate first so "就绪 / 不可用" replaces "检测中" ASAP.
     const ctx = updatePageHint(tab);
     const hint = document.getElementById("pageHint");
     if (hint) hint.dataset.ready = "1";
 
     if (!ctx.ok || !ctx.asin || !tab?.id) return;
 
-    // Locale gate on open (hard block — no scrape if wrong language).
-    try {
-      const pageMeta = await readPageLangAndHost(tab.id);
-      if (pageMeta && isAmazonHost(pageMeta.host)) {
-        const langGate = evaluatePageLanguage(pageMeta.host, pageMeta.lang);
-        if (!langGate.ok) {
-          if (hint) setPageHintWarn(hint, "语言不符", langGate.note);
-          setScrapeEnabled(false);
-          return;
-        }
-      }
-    } catch (langErr) {
-      console.warn("Language probe failed:", langErr);
-    }
+    // Parallel: locale hard-gate + local cache (neither blocks the other).
+    const [pageMeta, storageResult] = await Promise.all([
+      readPageLangAndHost(tab.id).catch((langErr) => {
+        console.warn("Language probe failed:", langErr);
+        return null;
+      }),
+      storageLocalGet(["lastScrapedData"]),
+    ]);
 
-    // Storage + preview after page hint is visible.
-    chrome.storage.local.get(["lastScrapedData"], (result) => {
-      if (!result.lastScrapedData) return;
-      const cachedData = result.lastScrapedData;
-      if (!isExportableResult(cachedData)) {
-        chrome.storage.local.remove(["lastScrapedData"]);
+    if (pageMeta && isAmazonHost(pageMeta.host)) {
+      const langGate = evaluatePageLanguage(pageMeta.host, pageMeta.lang);
+      if (!langGate.ok) {
+        if (hint) setPageHintWarn(hint, "语言不符", langGate.note);
+        setScrapeEnabled(false);
         return;
       }
-      if (!cachedData.products || !cachedData.products.length) return;
+    }
 
-      const cachedProduct = cachedData.products[0];
-      const cachedMetadata = cachedData.metadata || {};
+    const cachedData = storageResult.lastScrapedData;
+    if (!cachedData) return;
+    if (!isExportableResult(cachedData)) {
+      chrome.storage.local.remove(["lastScrapedData"]);
+      return;
+    }
+    if (!cachedData.products || !cachedData.products.length) return;
 
-      if (
-        cachedProduct.asin === ctx.asin &&
-        cachedMetadata.domain === ctx.host
-      ) {
-        applyExportableResult(cachedData, {
-          fromCache: true,
-          deferPreview: true,
-        });
-      }
-    });
+    const cachedProduct = cachedData.products[0];
+    const cachedMetadata = cachedData.metadata || {};
+
+    if (
+      cachedProduct.asin === ctx.asin &&
+      cachedMetadata.domain === ctx.host
+    ) {
+      // Heavy preview DOM + remote thumb after next paint (shell already ready).
+      applyExportableResult(cachedData, {
+        fromCache: true,
+        deferPreview: true,
+      });
+    }
   } catch (err) {
     console.error("Auto-restore failed:", err);
     const hint = document.getElementById("pageHint");
@@ -663,18 +706,20 @@ function bootPopup() {
       setScrapeEnabled(false);
       return;
     }
-    // 1) Bind buttons immediately — popup must feel interactive on open.
+    // 1) Bind buttons immediately — HTML shell is already visible (detecting + disabled).
     if (!wireUiHandlers()) return;
     showDetectingHint();
-    // 2) After first paint: tabs.query + cache restore (may hit remote thumb CDN).
-    afterFirstPaint(() => {
-      restoreCacheIfAny();
+    // 2) Tab probe ASAP (do not wait for rAF). Only preview/images defer to afterFirstPaint.
+    restoreCacheIfAny().catch((err) => {
+      console.error("Popup restore failed:", err);
+      setScrapeEnabled(false);
     });
   } catch (err) {
     console.error("Popup boot failed:", err);
     showBootError(
       "弹窗初始化失败：" + (err && err.message ? err.message : String(err))
     );
+    setScrapeEnabled(false);
   }
 }
 

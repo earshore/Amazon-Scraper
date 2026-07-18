@@ -132,7 +132,25 @@ assert(!popupHtml.includes('id="mdPreview"'), "mdPreview renamed");
 assert(!popupHtml.includes("Amazon Ember"), "no Amazon Ember font name");
 assert(!popupHtml.includes("copyJsonBtn"), "no copy JSON button");
 assert(popupHtml.includes('id="scrapeBtn"'), "primary scrape button");
+assert(
+  /id="scrapeBtn"[\s\S]*?\bdisabled\b/.test(popupHtml),
+  "scrape button disabled in static shell until page check"
+);
+assert(
+  popupHtml.includes('class="page-hint detecting"') ||
+    popupHtml.includes("page-hint detecting"),
+  "static shell shows detecting page-hint before JS"
+);
 assert(popupHtml.includes('class="actions"'), "actions toolbar");
+assert(
+  popupJs.includes("Promise.all") && popupJs.includes("storageLocalGet"),
+  "open path parallelizes language probe + storage"
+);
+assert(
+  popupJs.includes("restoreCacheIfAny()") &&
+    !/afterFirstPaint\(\s*\(\)\s*=>\s*\{\s*restoreCacheIfAny/.test(popupJs),
+  "tab probe not deferred behind afterFirstPaint"
+);
 assert(!popupHtml.includes("scrapeHint"), "no verbose action-hint block");
 assert(!popupHtml.includes("clearCacheBtn"), "no separate clear-cache button");
 assert(!popupHtml.includes("btn-main"), "no multi-line label inside button");

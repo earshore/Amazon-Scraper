@@ -96,11 +96,15 @@
         border-bottom: 1px solid var(--line);
         border-radius: 0;
         background: transparent;
+        /* Reserve strip height so first paint does not jump when hint fills. */
+        min-height: 18px;
+        box-sizing: content-box;
       }
+      /* Visible states paint without waiting for JS (HTML shell may already be detecting). */
       .page-hint.ok,
       .page-hint.warn,
       .page-hint.detecting {
-        /* JS sets display:flex */
+        display: flex;
         align-items: center;
         gap: 6px;
         flex-wrap: wrap;
@@ -512,7 +516,11 @@
         </div>
       </div>
 
-      <div id="pageHint" class="page-hint" role="status"></div>
+      <!-- Static shell: visible on first paint before any JS runs. -->
+      <div id="pageHint" class="page-hint detecting" role="status">
+        <span class="ph-dot" aria-hidden="true"></span>
+        <span class="ph-label">检测中…</span>
+      </div>
 
       <div class="actions">
         <button
@@ -520,6 +528,7 @@
           type="button"
           data-mode="fresh"
           title="解析当前商品页 DOM，结果可导出"
+          disabled
         >
           分析
         </button>
@@ -547,6 +556,10 @@
         需要启用 JavaScript 才能使用本扩展弹窗。
       </p>
     </noscript>
+    <!--
+      Scripts at end of body (no defer needed): chrome paints the static shell
+      above as soon as CSS + DOM for the card exist; then marketplaces + popup boot.
+    -->
     <script src="scraper/marketplaces.js"></script>
     <script src="popup.js"></script>
   </body>
