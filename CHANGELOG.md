@@ -5,6 +5,32 @@ All notable changes to **Amazon Product Insight** (local Chrome MV3 extension) a
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.4] - 2026-07-18
+
+Popup open UX productization: static first paint, honest page-hint state machine (no false「就绪」), parallel open probes.
+
+### Fixed
+
+- **No false ready:** product URLs stay on「检测中…」(host/ASIN chips allowed) with **分析** disabled until the locale hard-gate passes; only then show「就绪」and enable.
+- Language probe failure is **fail-closed** on open and on click (`无法校验语言`), aligned with scrape-time checks.
+- Open path no longer defers `tabs.query` behind `requestAnimationFrame`; only heavy cache preview / remote thumbnail wait for after-first-paint.
+- Language probe and `storage.local` cache read run in **parallel** after the URL gate.
+
+### Added
+
+- Static popup shell in `popup.html`: detecting strip + disabled primary button before any JS runs.
+- `verify.mjs` guards for static shell, parallel open I/O, `deferReady` / `await_language`, and fail-closed language probe UI.
+
+### Changed
+
+- `background.js`: document that the service worker is registration-only (no keep-alive loop); add empty `onStartup` listener.
+- Docs: README page-hint state machine, QA open-path cases, schema/extension version pointers.
+
+### Packaging
+
+- Runtime zip via `npm run pack` → `dist/amazon-product-insight-1.6.4.zip`.
+- Export **schema 1.3.0** unchanged.
+
 ## [1.6.3] - 2026-07-18
 
 Ship-quality UI polish, locale hard-gate, and packaging/docs alignment on top of the 1.6.2 architecture.

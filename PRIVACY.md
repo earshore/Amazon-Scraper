@@ -2,7 +2,7 @@
 
 **Amazon Product Insight**
 
-最后更新日期 / Last updated: **2026-07-18**（扩展版本 1.6.3）
+最后更新日期 / Last updated: **2026-07-18**（扩展版本 1.6.4）
 
 本扩展未与 Amazon 或其关联公司建立任何隶属、赞助或官方合作关系。  
 This extension is not affiliated with, sponsored by, or endorsed by Amazon or its affiliates.

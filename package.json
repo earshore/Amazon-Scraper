@@ -1,6 +1,6 @@
 {
   "name": "amazon-product-insight",
-  "version": "1.6.3",
+  "version": "1.6.4",
   "private": true,
   "description": "Chrome extension: local Amazon product page parser with JSON export",
   "repository": {
